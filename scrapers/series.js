@@ -38,7 +38,7 @@ async function getSeries(skip = 0) {
         name: title,
         poster: validPoster,
         posterShape: "poster",
-        description: description || `مسلسل ${title}`,
+        description: description || `[translate:مسلسل] ${title}`,
       });
     });
 
@@ -280,7 +280,7 @@ async function getSeriesStreams(id) {
     });
     console.log(`[DEBUG] Extracted CSRF token: ${csrfToken || 'NOT FOUND'}`);
 
-    // Extract post ID from object__info (including typo 'psot_id')
+    // Extract post ID from object__info (handling typo psot_id)
     let postId = '';
     $ep('script').each((i, elem) => {
       const scriptContent = $ep(elem).html();
@@ -337,7 +337,40 @@ async function getSeriesStreams(id) {
       }
     });
 
-    console.log(`[DEBUG] Total streams found: ${streams.length}`);
+    if (streams.length === 0) {
+      $stream("video source").each((i, elem) => {
+        const src = $stream(elem).attr('src');
+        if (src) {
+          console.log(`[DEBUG] Found video source src: ${src}`);
+          streams.push({
+            name: "ArabSeed",
+            title: `[translate:خادم فيديو] ${i + 1}`,
+            url: src,
+          });
+        }
+      });
+    }
+
+    if (streams.length === 0) {
+      $stream('script').each((i, elem) => {
+        const scriptText = $stream(elem).html();
+        const urlRegex = /(https?:\/\/[^\s'"]+\.(m3u8|mp4))/g;
+        let match;
+        while ((match = urlRegex.exec(scriptText)) !== null) {
+          const url = match[1];
+          if (url && !streams.find(s => s.url === url)) {
+            console.log(`[DEBUG] Found stream URL in script: ${url}`);
+            streams.push({
+              name: "ArabSeed",
+              title: `[translate:خادم سكربت] ${streams.length + 1}`,
+              url,
+            });
+          }
+        }
+      });
+    }
+
+    console.log(`[DEBUG] Total streams found after extended search: ${streams.length}`);
     return streams;
 
   } catch (error) {
