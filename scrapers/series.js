@@ -84,9 +84,6 @@ async function fetchAllEpisodesForSeason(seasonId, refererUrl, csrfToken, cookie
         }
       );
 
-      console.log(`[DEBUG] AJAX response status: ${response.status}`);
-      console.log(`[DEBUG] AJAX response type: ${response.data?.type}`);
-
       if (!response.data || response.data.type === "error") {
         console.log(`[DEBUG] AJAX returned error or no data: ${JSON.stringify(response.data)}`);
         break;
@@ -159,11 +156,10 @@ async function getSeriesMeta(id) {
         const match = scriptContent.match(/main__obj\s*=\s*{[^}]*'csrf__token'\s*:\s*"([a-zA-Z0-9]+)"/);
         if (match && match[1]) {
           csrfToken = match[1];
-          return false;  // break loop once token found
+          return false;
         }
       }
     });
-
     console.log(`[DEBUG] Extracted CSRF token from main__obj: ${csrfToken || 'NOT FOUND'}`);
 
     const title = $(".post__title h1").text().trim();
@@ -262,17 +258,65 @@ async function getSeriesStreams(id) {
     }
 
     const episodeUrl = Buffer.from(encodedEpisodeUrl, "base64").toString();
-    console.log(`[DEBUG] Fetching streams from episode URL: ${episodeUrl}`);
+    console.log(`[DEBUG] Fetching streams AJAX for episode URL: ${episodeUrl}`);
 
-    const response = await axios.get(episodeUrl, {
+    const episodeResponse = await axios.get(episodeUrl, {
       headers: { "User-Agent": USER_AGENT },
     });
 
-    const $ = cheerio.load(response.data);
+    const $ep = cheerio.load(episodeResponse.data);
+
+    // Extract CSRF token from main__obj
+    let csrfToken = '';
+    $ep('script').each((i, elem) => {
+      const scriptContent = $ep(elem).html();
+      if (scriptContent) {
+        const match = scriptContent.match(/main__obj\s*=\s*{[^}]*'csrf__token'\s*:\s*"([a-zA-Z0-9]+)"/);
+        if (match && match[1]) {
+          csrfToken = match[1];
+          return false;
+        }
+      }
+    });
+    console.log(`[DEBUG] Extracted CSRF token: ${csrfToken || 'NOT FOUND'}`);
+
+    // Extract post ID from hidden input or meta tag (adjust selector as needed)
+    const postId = $ep('input[name="postid"]').val() || $ep('meta[name="postid"]').attr('content') || '';
+    console.log(`[DEBUG] Extracted post ID: ${postId || 'NOT FOUND'}`);
+
+    if (!csrfToken || !postId) {
+      console.log('[DEBUG] Missing CSRF token or post ID for streams AJAX call');
+      return [];
+    }
+
+    const postData = new URLSearchParams();
+    postData.append('action', 'getwatchserver'); // Confirm action name from site
+    postData.append('postid', postId);
+    postData.append('csrftoken', csrfToken);
+
+    const ajaxUrl = `${BASE_URL}/wp-admin/admin-ajax.php`; // Confirm exact AJAX URL
+
+    const ajaxResponse = await axios.post(ajaxUrl, postData.toString(), {
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "User-Agent": USER_AGENT,
+        "X-Requested-With": "XMLHttpRequest",
+        "Referer": episodeUrl,
+        "Accept": "application/json, text/javascript, */*; q=0.01",
+      },
+      timeout: 12000,
+    });
+
+    if (!ajaxResponse.data || !ajaxResponse.data.html) {
+      console.log('[DEBUG] AJAX streams response empty or invalid');
+      return [];
+    }
+
+    const $stream = cheerio.load(ajaxResponse.data.html);
     const streams = [];
 
-    $("iframe").each((i, elem) => {
-      const src = $(elem).attr("src");
+    $stream('iframe').each((i, elem) => {
+      const src = $stream(elem).attr('src');
       if (src) {
         console.log(`[DEBUG] Found stream iframe src: ${src}`);
         streams.push({
@@ -285,6 +329,7 @@ async function getSeriesStreams(id) {
 
     console.log(`[DEBUG] Total streams found: ${streams.length}`);
     return streams;
+
   } catch (error) {
     console.error(`[ERROR] Failed to fetch series streams for ID ${id}:`, error);
     return [];
