@@ -58,6 +58,7 @@ async function fetchAllEpisodesForSeason(seasonId, refererUrl, csrfToken, cookie
   while (hasMore) {
     try {
       const postData = new URLSearchParams();
+      postData.append("seasonid", seasonId);
       postData.append("offset", offset);
       postData.append("csrf__token", csrfToken);
 
@@ -73,6 +74,11 @@ async function fetchAllEpisodesForSeason(seasonId, refererUrl, csrfToken, cookie
             "X-Requested-With": "XMLHttpRequest",
             Referer: refererUrl,
             Cookie: cookies,
+            Accept: "application/json, text/javascript, */*; q=0.01",
+            Origin: BASE_URL,
+            "Sec-Fetch-Site": "same-origin",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Dest": "empty",
           },
           timeout: 12000,
         }
@@ -102,7 +108,7 @@ async function fetchAllEpisodesForSeason(seasonId, refererUrl, csrfToken, cookie
           id: episodeId,
           title: `الحلقة ${episodeNum}`,
           episode: episodeNum,
-          season: null,
+          season: null, 
           released: new Date().toISOString(),
         });
 
@@ -136,9 +142,9 @@ async function getSeriesMeta(id) {
     const cookies = response.headers['set-cookie']?.join('; ') || '';
     const $ = cheerio.load(response.data);
 
-    // Robust CSRF token extraction from inputs, meta, or scripts:
     let csrfToken = $('input[name="csrf__token"]').val() ||
                     $('meta[name="csrf__token"]').attr('content') || '';
+
     if (!csrfToken) {
       $('script').each((i, elem) => {
         const scriptContent = $(elem).html();
@@ -146,7 +152,7 @@ async function getSeriesMeta(id) {
           const match = scriptContent.match(/csrf__token['":\s]+["']([a-zA-Z0-9]+)["']/);
           if (match && match[1]) {
             csrfToken = match[1];
-            return false; // break loop
+            return false; 
           }
         }
       });
@@ -178,35 +184,40 @@ async function getSeriesMeta(id) {
     let allEpisodes = [];
 
     if (seasons.length === 0) {
-      $(".episodes__list a, .seasons__list a").each((i, elem) => {
-        const $elem = $(elem);
-        const episodeUrl = $elem.attr("href");
-        const episodeTitle = $elem.text().trim();
-
-        if (!episodeUrl) return;
-
-        const match = episodeTitle.match(/\d+/);
-        const episodeNum = match ? parseInt(match[0]) : i + 1;
-        const episodeId = "asd:" + Buffer.from(episodeUrl).toString("base64");
-
-        allEpisodes.push({
-          id: episodeId,
-          title: `الحلقة ${episodeNum}`,
-          season: 1,
-          episode: episodeNum,
-          released: new Date().toISOString(),
-        });
-      });
-
       const loadMoreBtn = $(".load__more__episodes");
-      if (loadMoreBtn.length > 0) {
+      if (loadMoreBtn.length > 0 &&
+          loadMoreBtn.css("pointer-events") !== "none" &&
+          loadMoreBtn.css("opacity") !== "0.5") {
         const postId = loadMoreBtn.attr("data-id");
         if (postId) {
-          console.log(`[DEBUG] Load more episodes detected with postId: ${postId}`);
+          console.log(`[DEBUG] Load more episodes button enabled with postId: ${postId}`);
           const moreEpisodes = await fetchAllEpisodesForSeason(postId, seriesUrl, csrfToken, cookies);
           moreEpisodes.forEach(ep => ep.season = 1);
           allEpisodes = [...allEpisodes, ...moreEpisodes];
+        } else {
+          console.log("[DEBUG] Load more button found but missing data-id.");
         }
+      } else {
+        console.log("[DEBUG] No active load more button, reading episodes from HTML");
+        $(".episodes__list a, .seasons__list a").each((i, elem) => {
+          const $elem = $(elem);
+          const episodeUrl = $elem.attr("href");
+          const episodeTitle = $elem.text().trim();
+
+          if (!episodeUrl) return;
+
+          const match = episodeTitle.match(/\d+/);
+          const episodeNum = match ? parseInt(match[0]) : i + 1;
+          const episodeId = "asd:" + Buffer.from(episodeUrl).toString("base64");
+
+          allEpisodes.push({
+            id: episodeId,
+            title: `الحلقة ${episodeNum}`,
+            season: 1,
+            episode: episodeNum,
+            released: new Date().toISOString(),
+          });
+        });
       }
     } else {
       for (const season of seasons) {
