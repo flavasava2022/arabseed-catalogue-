@@ -57,12 +57,14 @@ async function fetchAllEpisodesForSeason(seasonId, refererUrl, csrfToken, cookie
 
   while (hasMore) {
     try {
+      // CORRECTED: Use season_id and csrf_token (not seasonid and csrf__token)
       const postData = new URLSearchParams();
-      postData.append("seasonid", seasonId);
+      postData.append("season_id", seasonId);
+      postData.append("csrf_token", csrfToken);
       postData.append("offset", offset);
-      postData.append("csrf__token", csrfToken);
 
       console.log(`[DEBUG] Sending AJAX POST for episodes. SeasonId: ${seasonId}, Offset: ${offset}`);
+      console.log(`[DEBUG] POST data: ${postData.toString()}`);
 
       const response = await axios.post(
         `${BASE_URL}/season__episodes/`,
@@ -84,7 +86,15 @@ async function fetchAllEpisodesForSeason(seasonId, refererUrl, csrfToken, cookie
         }
       );
 
-      if (!response.data || !response.data.html) {
+      console.log(`[DEBUG] AJAX response status: ${response.status}`);
+      console.log(`[DEBUG] AJAX response type: ${response.data?.type}`);
+
+      if (!response.data || response.data.type === "error") {
+        console.log(`[DEBUG] AJAX returned error or no data: ${JSON.stringify(response.data)}`);
+        break;
+      }
+
+      if (!response.data.html) {
         console.log("[DEBUG] No HTML content in episodes AJAX response, stopping pagination.");
         break;
       }
@@ -108,7 +118,7 @@ async function fetchAllEpisodesForSeason(seasonId, refererUrl, csrfToken, cookie
           id: episodeId,
           title: `الحلقة ${episodeNum}`,
           episode: episodeNum,
-          season: null, 
+          season: null,
           released: new Date().toISOString(),
         });
 
@@ -140,19 +150,21 @@ async function getSeriesMeta(id) {
     });
 
     const cookies = response.headers['set-cookie']?.join('; ') || '';
+    console.log(`[DEBUG] Cookies captured: ${cookies.substring(0, 100)}...`);
+
     const $ = cheerio.load(response.data);
 
-    let csrfToken = $('input[name="csrf__token"]').val() ||
-                    $('meta[name="csrf__token"]').attr('content') || '';
+    let csrfToken = $('input[name="csrf_token"]').val() ||
+                    $('meta[name="csrf_token"]').attr('content') || '';
 
     if (!csrfToken) {
       $('script').each((i, elem) => {
         const scriptContent = $(elem).html();
         if (scriptContent) {
-          const match = scriptContent.match(/csrf__token['":\s]+["']([a-zA-Z0-9]+)["']/);
+          const match = scriptContent.match(/csrf[_]?token['":\s]+["']([a-zA-Z0-9]+)["']/);
           if (match && match[1]) {
             csrfToken = match[1];
-            return false; 
+            return false;
           }
         }
       });
