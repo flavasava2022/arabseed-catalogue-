@@ -57,14 +57,12 @@ async function fetchAllEpisodesForSeason(seasonId, refererUrl, csrfToken, cookie
 
   while (hasMore) {
     try {
-      // CORRECTED: Use season_id and csrf_token (not seasonid and csrf__token)
       const postData = new URLSearchParams();
       postData.append("season_id", seasonId);
       postData.append("csrf_token", csrfToken);
       postData.append("offset", offset);
 
       console.log(`[DEBUG] Sending AJAX POST for episodes. SeasonId: ${seasonId}, Offset: ${offset}`);
-      console.log(`[DEBUG] POST data: ${postData.toString()}`);
 
       const response = await axios.post(
         `${BASE_URL}/season__episodes/`,
@@ -116,7 +114,7 @@ async function fetchAllEpisodesForSeason(seasonId, refererUrl, csrfToken, cookie
 
         episodes.push({
           id: episodeId,
-          title: `الحلقة ${episodeNum}`,
+          title: `[translate:الحلقة] ${episodeNum}`,
           episode: episodeNum,
           season: null,
           released: new Date().toISOString(),
@@ -154,23 +152,19 @@ async function getSeriesMeta(id) {
 
     const $ = cheerio.load(response.data);
 
-    let csrfToken = $('input[name="csrf_token"]').val() ||
-                    $('meta[name="csrf_token"]').attr('content') || '';
-
-    if (!csrfToken) {
-      $('script').each((i, elem) => {
-        const scriptContent = $(elem).html();
-        if (scriptContent) {
-          const match = scriptContent.match(/csrf[_]?token['":\s]+["']([a-zA-Z0-9]+)["']/);
-          if (match && match[1]) {
-            csrfToken = match[1];
-            return false;
-          }
+    let csrfToken = '';
+    $('script').each((i, elem) => {
+      const scriptContent = $(elem).html();
+      if (scriptContent) {
+        const match = scriptContent.match(/main__obj\s*=\s*{[^}]*'csrf__token'\s*:\s*"([a-zA-Z0-9]+)"/);
+        if (match && match[1]) {
+          csrfToken = match[1];
+          return false;  // break loop once token found
         }
-      });
-    }
+      }
+    });
 
-    console.log(`[DEBUG] Extracted CSRF token: ${csrfToken || 'NOT FOUND'}`);
+    console.log(`[DEBUG] Extracted CSRF token from main__obj: ${csrfToken || 'NOT FOUND'}`);
 
     const title = $(".post__title h1").text().trim();
     const posterUrl = $(".poster__single img").attr("src") || $(".poster__single img").attr("data-src");
@@ -224,7 +218,7 @@ async function getSeriesMeta(id) {
 
           allEpisodes.push({
             id: episodeId,
-            title: `الحلقة ${episodeNum}`,
+            title: `[translate:الحلقة] ${episodeNum}`,
             season: 1,
             episode: episodeNum,
             released: new Date().toISOString(),
@@ -283,7 +277,7 @@ async function getSeriesStreams(id) {
         console.log(`[DEBUG] Found stream iframe src: ${src}`);
         streams.push({
           name: "ArabSeed",
-          title: `خادم ${i + 1}`,
+          title: `[translate:خادم] ${i + 1}`,
           url: src,
         });
       }
