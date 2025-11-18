@@ -50,7 +50,6 @@ async function getSeries(skip = 0) {
   }
 }
 
-// Updated AJAX episode loader with CSRF token and cookies
 async function fetchAllEpisodesForSeason(seasonId, refererUrl, csrfToken, cookies) {
   const episodes = [];
   let offset = 0;
@@ -97,6 +96,7 @@ async function fetchAllEpisodesForSeason(seasonId, refererUrl, csrfToken, cookie
 
         const match = episodeTitle.match(/\d+/);
         const episodeNum = match ? parseInt(match[0]) : offset + i + 1;
+
         const episodeId = "asd:" + Buffer.from(episodeUrl).toString("base64");
 
         episodes.push({
@@ -137,13 +137,23 @@ async function getSeriesMeta(id) {
     const cookies = response.headers['set-cookie']?.join('; ') || '';
     const $ = cheerio.load(response.data);
 
-    // Extract CSRF token from page (adjust selector accordingly)
-    const csrfToken =
-      $('input[name="csrf__token"]').val() ||
-      $('meta[name="csrf__token"]').attr('content') ||
-      ''; // fallback empty
+    // Robust CSRF token extraction from inputs, meta, or scripts:
+    let csrfToken = $('input[name="csrf__token"]').val() ||
+                    $('meta[name="csrf__token"]').attr('content') || '';
+    if (!csrfToken) {
+      $('script').each((i, elem) => {
+        const scriptContent = $(elem).html();
+        if (scriptContent) {
+          const match = scriptContent.match(/csrf__token['":\s]+["']([a-zA-Z0-9]+)["']/);
+          if (match && match[1]) {
+            csrfToken = match[1];
+            return false; // break loop
+          }
+        }
+      });
+    }
 
-    console.log(`[DEBUG] Extracted CSRF token: ${csrfToken}`);
+    console.log(`[DEBUG] Extracted CSRF token: ${csrfToken || 'NOT FOUND'}`);
 
     const title = $(".post__title h1").text().trim();
     const posterUrl = $(".poster__single img").attr("src") || $(".poster__single img").attr("data-src");
