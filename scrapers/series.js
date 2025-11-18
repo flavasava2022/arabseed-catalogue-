@@ -58,7 +58,6 @@ async function fetchAllEpisodesForSeason(seasonId, refererUrl, csrfToken, cookie
   while (hasMore) {
     try {
       const postData = new URLSearchParams();
-      postData.append("seasonid", seasonId);
       postData.append("offset", offset);
       postData.append("csrf__token", csrfToken);
 
