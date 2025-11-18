@@ -266,7 +266,7 @@ async function getSeriesStreams(id) {
 
     const $ep = cheerio.load(episodeResponse.data);
 
-    // Extract CSRF token from main__obj JS variable
+    // Extract CSRF token from main__obj
     let csrfToken = '';
     $ep('script').each((i, elem) => {
       const scriptContent = $ep(elem).html();
@@ -280,12 +280,12 @@ async function getSeriesStreams(id) {
     });
     console.log(`[DEBUG] Extracted CSRF token: ${csrfToken || 'NOT FOUND'}`);
 
-    // Extract post ID from object__info JS variable
+    // Extract post ID from object__info (including typo 'psot_id')
     let postId = '';
     $ep('script').each((i, elem) => {
       const scriptContent = $ep(elem).html();
       if (scriptContent) {
-        const postIdMatch = scriptContent.match(/object__info\s*=\s*{[^}]*'post_id'\s*:\s*'(\d+)'/);
+        const postIdMatch = scriptContent.match(/object__info\s*=\s*{[^}]*['"]p[s]?ot_id['"]\s*:\s*['"](\d+)['"]/i);
         if (postIdMatch && postIdMatch[1]) {
           postId = postIdMatch[1];
           return false;
@@ -300,7 +300,7 @@ async function getSeriesStreams(id) {
     }
 
     const postData = new URLSearchParams();
-    postData.append('action', 'getwatchserver'); // action name from site's JS
+    postData.append('action', 'getwatchserver');
     postData.append('postid', postId);
     postData.append('csrftoken', csrfToken);
 
