@@ -266,7 +266,7 @@ async function getSeriesStreams(id) {
 
     const $ep = cheerio.load(episodeResponse.data);
 
-    // Extract CSRF token from main__obj
+    // Extract CSRF token from main__obj JS variable
     let csrfToken = '';
     $ep('script').each((i, elem) => {
       const scriptContent = $ep(elem).html();
@@ -280,8 +280,18 @@ async function getSeriesStreams(id) {
     });
     console.log(`[DEBUG] Extracted CSRF token: ${csrfToken || 'NOT FOUND'}`);
 
-    // Extract post ID from hidden input or meta tag (adjust selector as needed)
-    const postId = $ep('input[name="postid"]').val() || $ep('meta[name="postid"]').attr('content') || '';
+    // Extract post ID from object__info JS variable
+    let postId = '';
+    $ep('script').each((i, elem) => {
+      const scriptContent = $ep(elem).html();
+      if (scriptContent) {
+        const postIdMatch = scriptContent.match(/object__info\s*=\s*{[^}]*'post_id'\s*:\s*'(\d+)'/);
+        if (postIdMatch && postIdMatch[1]) {
+          postId = postIdMatch[1];
+          return false;
+        }
+      }
+    });
     console.log(`[DEBUG] Extracted post ID: ${postId || 'NOT FOUND'}`);
 
     if (!csrfToken || !postId) {
@@ -290,11 +300,11 @@ async function getSeriesStreams(id) {
     }
 
     const postData = new URLSearchParams();
-    postData.append('action', 'getwatchserver'); // Confirm action name from site
+    postData.append('action', 'getwatchserver'); // action name from site's JS
     postData.append('postid', postId);
     postData.append('csrftoken', csrfToken);
 
-    const ajaxUrl = `${BASE_URL}/wp-admin/admin-ajax.php`; // Confirm exact AJAX URL
+    const ajaxUrl = `${BASE_URL}/wp-admin/admin-ajax.php`;
 
     const ajaxResponse = await axios.post(ajaxUrl, postData.toString(), {
       headers: {
