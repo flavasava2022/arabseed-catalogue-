@@ -249,6 +249,13 @@ async function getSeriesMeta(id) {
   }
 }
 
+// Placeholder for driver-specific video URL extraction
+async function extractVideoUrl(url, driver) {
+  // Implement extraction logic per streaming host here
+  // For now, return the input URL for demo purposes
+  return url;
+}
+
 async function getSeriesStreams(id) {
   try {
     const encodedEpisodeUrl = id.split(":")[1];
@@ -258,123 +265,51 @@ async function getSeriesStreams(id) {
     }
 
     const episodeUrl = Buffer.from(encodedEpisodeUrl, "base64").toString();
-    console.log(`[DEBUG] Fetching streams AJAX for episode URL: ${episodeUrl}`);
+    console.log(`[DEBUG] Fetching streams from episode URL: ${episodeUrl}`);
 
-    const episodeResponse = await axios.get(episodeUrl, {
-      headers: { "User-Agent": USER_AGENT },
-    });
+    // ArabSeed stream extraction logic from watch page
+    const response = await axios.get(episodeUrl, { headers: { "User-Agent": USER_AGENT }, timeout: 10000 });
+    const $ = cheerio.load(response.data);
 
-    const $ep = cheerio.load(episodeResponse.data);
-
-    // Extract CSRF token from main__obj
-    let csrfToken = '';
-    $ep('script').each((i, elem) => {
-      const scriptContent = $ep(elem).html();
-      if (scriptContent) {
-        const match = scriptContent.match(/main__obj\s*=\s*{[^}]*'csrf__token'\s*:\s*"([a-zA-Z0-9]+)"/);
-        if (match && match[1]) {
-          csrfToken = match[1];
-          return false;
-        }
-      }
-    });
-    console.log(`[DEBUG] Extracted CSRF token: ${csrfToken || 'NOT FOUND'}`);
-
-    // Extract post ID from object__info (handling typo psot_id)
-    let postId = '';
-    $ep('script').each((i, elem) => {
-      const scriptContent = $ep(elem).html();
-      if (scriptContent) {
-        const postIdMatch = scriptContent.match(/object__info\s*=\s*{[^}]*['"]p[s]?ot_id['"]\s*:\s*['"](\d+)['"]/i);
-        if (postIdMatch && postIdMatch[1]) {
-          postId = postIdMatch[1];
-          return false;
-        }
-      }
-    });
-    console.log(`[DEBUG] Extracted post ID: ${postId || 'NOT FOUND'}`);
-
-    if (!csrfToken || !postId) {
-      console.log('[DEBUG] Missing CSRF token or post ID for streams AJAX call');
-      return [];
-    }
-
-    const postData = new URLSearchParams();
-    postData.append('action', 'getwatchserver');
-    postData.append('postid', postId);
-    postData.append('csrftoken', csrfToken);
-
-    const ajaxUrl = `${BASE_URL}/wp-admin/admin-ajax.php`;
-
-    const ajaxResponse = await axios.post(ajaxUrl, postData.toString(), {
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        "User-Agent": USER_AGENT,
-        "X-Requested-With": "XMLHttpRequest",
-        "Referer": episodeUrl,
-        "Accept": "application/json, text/javascript, */*; q=0.01",
-      },
-      timeout: 12000,
-    });
-
-    if (!ajaxResponse.data || !ajaxResponse.data.html) {
-      console.log('[DEBUG] AJAX streams response empty or invalid');
-      return [];
-    }
-
-    const $stream = cheerio.load(ajaxResponse.data.html);
     const streams = [];
+    const processedSources = new Set();
 
-    $stream('iframe').each((i, elem) => {
-      const src = $stream(elem).attr('src');
-      if (src) {
-        console.log(`[DEBUG] Found stream iframe src: ${src}`);
-        streams.push({
-          name: "ArabSeed",
-          title: `[translate:خادم] ${i + 1}`,
-          url: src,
-        });
-      }
-    });
+    const watchBtnHref = $('a.watchBTn').attr('href');
+    if (watchBtnHref) {
+      const watchUrl = watchBtnHref.startsWith('http') ? watchBtnHref : `${BASE_URL}${watchBtnHref}`;
+      const watchResponse = await axios.get(watchUrl, { headers: { 'User-Agent': USER_AGENT }, timeout: 10000 });
+      const $watch = cheerio.load(watchResponse.data);
 
-    if (streams.length === 0) {
-      $stream("video source").each((i, elem) => {
-        const src = $stream(elem).attr('src');
-        if (src) {
-          console.log(`[DEBUG] Found video source src: ${src}`);
-          streams.push({
-            name: "ArabSeed",
-            title: `[translate:خادم فيديو] ${i + 1}`,
-            url: src,
-          });
-        }
-      });
-    }
+      const liElements = $watch('li[data-link]');
+      for (let i = 0; i < liElements.length; i++) {
+        const el = liElements[i];
+        const embedUrl = $watch(el).attr('data-link');
+        if (embedUrl && !processedSources.has(embedUrl)) {
+          processedSources.add(embedUrl);
+          const fullUrl = embedUrl.startsWith('http') ? embedUrl : `https:${embedUrl}`;
 
-    if (streams.length === 0) {
-      $stream('script').each((i, elem) => {
-        const scriptText = $stream(elem).html();
-        const urlRegex = /(https?:\/\/[^\s'"]+\.(m3u8|mp4))/g;
-        let match;
-        while ((match = urlRegex.exec(scriptText)) !== null) {
-          const url = match[1];
-          if (url && !streams.find(s => s.url === url)) {
-            console.log(`[DEBUG] Found stream URL in script: ${url}`);
+          let driver = 'Unknown';
+          if (fullUrl.includes('mixdrop')) driver = 'mixdrop';
+          else if (fullUrl.includes('dood')) driver = 'doodstream';
+          else if (fullUrl.includes('streamwish')) driver = 'streamwish';
+          else if (fullUrl.includes('vidguard')) driver = 'vidguard';
+
+          const videoUrl = await extractVideoUrl(fullUrl, driver);
+          if (videoUrl) {
             streams.push({
-              name: "ArabSeed",
-              title: `[translate:خادم سكربت] ${streams.length + 1}`,
-              url,
+              name: `Arabseed - ${driver}`,
+              title: driver,
+              url: videoUrl,
             });
           }
         }
-      });
+      }
     }
 
-    console.log(`[DEBUG] Total streams found after extended search: ${streams.length}`);
+    console.log(`[DEBUG] Total streams found: ${streams.length}`);
     return streams;
-
   } catch (error) {
-    console.error(`[ERROR] Failed to fetch series streams for ID ${id}:`, error);
+    console.error('[STREAM ERROR]', error.message);
     return [];
   }
 }
@@ -383,4 +318,5 @@ module.exports = {
   getSeries,
   getSeriesMeta,
   getSeriesStreams,
+  extractVideoUrl,
 };
