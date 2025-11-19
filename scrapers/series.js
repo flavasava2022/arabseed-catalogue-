@@ -290,7 +290,7 @@ async function extractArabseedServer(url) {
     console.log("[DEBUG] No video source found in player page");
     return null;
   } catch (error) {
-    console.error(`[ERROR] Arabseed server extraction failed:`, error.message);
+    console.error(`[ERROR] Arabseed 2 server extraction failed:`, error.message);
     return null;
   }
 }
