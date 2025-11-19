@@ -6,10 +6,6 @@ const BASE_URL = "https://a.asd.homes";
 const SERIES_CATEGORY = "/category/arabic-series-6/";
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 
-// Configuration for proxy server
-const PROXY_ENABLED = true; // Set to true if you want to use proxy
-const PROXY_BASE_URL = process.env.PROXY_BASE_URL || "https://your-proxy-server.com"; // Your proxy server URL
-
 // Fetch series list
 async function getSeries(skip = 0) {
   try {
@@ -245,25 +241,11 @@ async function getSeriesMeta(id) {
   }
 }
 
-// Helper function to create proxied URL
-function createProxiedUrl(videoUrl, referer) {
-  if (!PROXY_ENABLED) {
-    return videoUrl;
-  }
-  
-  // Encode the video URL and referer
-  const encodedUrl = Buffer.from(videoUrl).toString('base64');
-  const encodedReferer = Buffer.from(referer).toString('base64');
-  
-  return `${PROXY_BASE_URL}/proxy?url=${encodedUrl}&referer=${encodedReferer}`;
-}
-
 // Extract from Arabseed's own server (gamehub.cam or similar)
 async function extractArabseedServer(url) {
   try {
     console.log(`[DEBUG] Extracting from Arabseed server: ${url}`);
     
-    // Step 1: Fetch the asd.php page which contains iframe
     const response = await axios.get(url, {
       headers: { "User-Agent": USER_AGENT, Referer: BASE_URL },
       timeout: 10000,
@@ -271,7 +253,6 @@ async function extractArabseedServer(url) {
 
     const $ = cheerio.load(response.data);
     
-    // Step 2: Find the iframe src
     const iframeSrc = $('iframe').attr('src');
     console.log(`[DEBUG] Found iframe src: ${iframeSrc}`);
     
@@ -282,35 +263,26 @@ async function extractArabseedServer(url) {
 
     const fullIframeUrl = iframeSrc.startsWith('http') ? iframeSrc : `https:${iframeSrc}`;
     
-    // Step 3: Fetch the actual video player page
     const playerResponse = await axios.get(fullIframeUrl, {
       headers: { 
         "User-Agent": USER_AGENT, 
-        Referer: BASE_URL  // Important: use BASE_URL as referer
+        Referer: BASE_URL
       },
       timeout: 10000,
     });
 
     const $player = cheerio.load(playerResponse.data);
     
-    // Step 4: Extract video source
     const videoSrc = $player('video source').attr('src') || $player('source').attr('src');
     
     if (videoSrc) {
       console.log(`[DEBUG] Arabseed server video URL found: ${videoSrc}`);
       
-      // Return proxied URL with proper referer
-      const proxiedUrl = createProxiedUrl(videoSrc, fullIframeUrl);
-      console.log(`[DEBUG] Returning proxied URL: ${proxiedUrl.substring(0, 80)}...`);
-      
       return {
-        url: proxiedUrl,
-        originalUrl: videoSrc,
-        referer: fullIframeUrl,
-        headers: {
-          'User-Agent': USER_AGENT,
-          'Referer': fullIframeUrl,
-          'Origin': new URL(fullIframeUrl).origin
+        url: videoSrc,
+        behaviorHints: {
+          notWebReady: true,
+          bingeGroup: "arabseed-server"
         }
       };
     }
@@ -319,6 +291,44 @@ async function extractArabseedServer(url) {
     return null;
   } catch (error) {
     console.error(`[ERROR] Arabseed server extraction failed:`, error.message);
+    return null;
+  }
+}
+
+// Handle m2.arabseed.one proxy URLs
+async function extractArabseedProxy(url) {
+  try {
+    console.log(`[DEBUG] Extracting from Arabseed proxy: ${url}`);
+    
+    // Extract and decode the id parameter
+    const urlObj = new URL(url);
+    const encodedId = urlObj.searchParams.get('id');
+    
+    if (!encodedId) {
+      console.log("[DEBUG] No id parameter found in proxy URL");
+      return null;
+    }
+    
+    const decodedUrl = Buffer.from(encodedId, 'base64').toString();
+    console.log(`[DEBUG] Decoded proxy URL: ${decodedUrl}`);
+    
+    // Determine the actual host and extract accordingly
+    if (decodedUrl.includes('savefiles')) {
+      return await extractSavefiles(decodedUrl);
+    } else if (decodedUrl.includes('voe.sx')) {
+      return await extractVoe(decodedUrl);
+    } else if (decodedUrl.includes('filemoon')) {
+      return await extractFilemoon(decodedUrl);
+    } else if (decodedUrl.includes('vidmoly')) {
+      return await extractVidmoly(decodedUrl);
+    } else if (decodedUrl.includes('ups2up')) {
+      return await extractGeneric(decodedUrl);
+    }
+    
+    console.log(`[DEBUG] Unknown host in proxy URL: ${decodedUrl}`);
+    return null;
+  } catch (error) {
+    console.error(`[ERROR] Arabseed proxy extraction failed:`, error.message);
     return null;
   }
 }
@@ -345,9 +355,9 @@ async function extractVidmoly(url) {
         console.log(`[DEBUG] Vidmoly video URL found: ${match[1]}`);
         return {
           url: match[1],
-          headers: {
-            'User-Agent': USER_AGENT,
-            'Referer': url
+          behaviorHints: {
+            notWebReady: true,
+            bingeGroup: "vidmoly"
           }
         };
       }
@@ -381,9 +391,9 @@ async function extractFilemoon(url) {
       console.log(`[DEBUG] Filemoon source URL found: ${sourceUrl}`);
       return {
         url: sourceUrl,
-        headers: {
-          'User-Agent': USER_AGENT,
-          'Referer': url
+        behaviorHints: {
+          notWebReady: true,
+          bingeGroup: "filemoon"
         }
       };
     }
@@ -401,9 +411,9 @@ async function extractFilemoon(url) {
         const finalUrl = match[1].startsWith('http') ? match[1] : `https:${match[1]}`;
         return {
           url: finalUrl,
-          headers: {
-            'User-Agent': USER_AGENT,
-            'Referer': url
+          behaviorHints: {
+            notWebReady: true,
+            bingeGroup: "filemoon"
           }
         };
       }
@@ -417,6 +427,149 @@ async function extractFilemoon(url) {
   }
 }
 
+async function extractVoe(url) {
+  try {
+    console.log(`[DEBUG] Extracting from Voe.sx: ${url}`);
+    const response = await axios.get(url, {
+      headers: { "User-Agent": USER_AGENT, Referer: url },
+      timeout: 10000,
+    });
+
+    const html = response.data;
+
+    const patterns = [
+      /'hls'\s*:\s*'([^']+\.m3u8[^']*)'/,
+      /"hls"\s*:\s*"([^"]+\.m3u8[^"]*)"/,
+      /prompt\([^)]*\);[^}]*sources\s*:\s*\{\s*hls\s*:\s*'([^']+)'/,
+      /video_link\s*=\s*"([^"]+\.m3u8[^"]*)"/,
+    ];
+
+    for (const pattern of patterns) {
+      const match = html.match(pattern);
+      if (match && match[1]) {
+        console.log(`[DEBUG] Voe.sx video URL found: ${match[1]}`);
+        return {
+          url: match[1],
+          behaviorHints: {
+            notWebReady: true,
+            bingeGroup: "voe"
+          }
+        };
+      }
+    }
+
+    console.log(`[DEBUG] Voe.sx: No video URL found`);
+    return null;
+  } catch (error) {
+    console.error(`[ERROR] Voe.sx extraction failed:`, error.message);
+    return null;
+  }
+}
+
+async function extractSavefiles(url) {
+  try {
+    console.log(`[DEBUG] Extracting from Savefiles: ${url}`);
+    const response = await axios.get(url, {
+      headers: { "User-Agent": USER_AGENT, Referer: url },
+      timeout: 10000,
+    });
+
+    const $ = cheerio.load(response.data);
+    const html = response.data;
+
+    let sourceUrl = $('video source').attr('src') || $('source').attr('src');
+
+    if (sourceUrl) {
+      sourceUrl = sourceUrl.startsWith('http') ? sourceUrl : `https:${sourceUrl}`;
+      console.log(`[DEBUG] Savefiles source URL found: ${sourceUrl}`);
+      return {
+        url: sourceUrl,
+        behaviorHints: {
+          notWebReady: true,
+          bingeGroup: "savefiles"
+        }
+      };
+    }
+
+    const patterns = [
+      /file\s*:\s*"([^"]+\.(m3u8|mp4)[^"]*)"/,
+      /"file"\s*:\s*"([^"]+\.(m3u8|mp4)[^"]*)"/,
+      /sources\s*:\s*\[\s*"([^"]+)"/,
+    ];
+
+    for (const pattern of patterns) {
+      const match = html.match(pattern);
+      if (match && match[1]) {
+        console.log(`[DEBUG] Savefiles video URL found: ${match[1]}`);
+        return {
+          url: match[1],
+          behaviorHints: {
+            notWebReady: true,
+            bingeGroup: "savefiles"
+          }
+        };
+      }
+    }
+
+    console.log(`[DEBUG] Savefiles: No video URL found`);
+    return null;
+  } catch (error) {
+    console.error(`[ERROR] Savefiles extraction failed:`, error.message);
+    return null;
+  }
+}
+
+async function extractGeneric(url) {
+  try {
+    console.log(`[DEBUG] Generic extraction for: ${url}`);
+    const response = await axios.get(url, {
+      headers: { "User-Agent": USER_AGENT, Referer: url },
+      timeout: 10000,
+    });
+
+    const $ = cheerio.load(response.data);
+    const html = response.data;
+
+    let sourceUrl = $('video source').attr('src') || $('source').attr('src');
+
+    if (sourceUrl) {
+      sourceUrl = sourceUrl.startsWith('http') ? sourceUrl : `https:${sourceUrl}`;
+      console.log(`[DEBUG] Generic source URL found: ${sourceUrl}`);
+      return {
+        url: sourceUrl,
+        behaviorHints: {
+          notWebReady: true
+        }
+      };
+    }
+
+    const patterns = [
+      /file\s*:\s*"([^"]+\.(m3u8|mp4)[^"]*)"/,
+      /"file"\s*:\s*"([^"]+\.(m3u8|mp4)[^"]*)"/,
+      /sources\s*:\s*\[\s*\{\s*file\s*:\s*"([^"]+)"/,
+    ];
+
+    for (const pattern of patterns) {
+      const match = html.match(pattern);
+      if (match && match[1]) {
+        console.log(`[DEBUG] Generic video URL found: ${match[1]}`);
+        return {
+          url: match[1],
+          behaviorHints: {
+            notWebReady: true
+          }
+        };
+      }
+    }
+
+    console.log(`[DEBUG] Generic: No video URL found`);
+    return null;
+  } catch (error) {
+    console.error(`[ERROR] Generic extraction failed:`, error.message);
+    return null;
+  }
+}
+
 async function extractVideoUrl(embedUrl, driver) {
   console.log(`[DEBUG] Extracting video URL for driver: ${driver}, url: ${embedUrl}`);
 
@@ -425,13 +578,19 @@ async function extractVideoUrl(embedUrl, driver) {
   try {
     if (driver === 'arabseed') {
       result = await extractArabseedServer(embedUrl);
+    } else if (driver === 'arabseed-proxy') {
+      result = await extractArabseedProxy(embedUrl);
     } else if (driver === 'vidmoly') {
       result = await extractVidmoly(embedUrl);
     } else if (driver === 'filemoon') {
       result = await extractFilemoon(embedUrl);
+    } else if (driver === 'voe') {
+      result = await extractVoe(embedUrl);
+    } else if (driver === 'savefiles') {
+      result = await extractSavefiles(embedUrl);
     } else {
-      console.log(`[DEBUG] Unknown driver, returning URL as is`);
-      return { url: embedUrl };
+      console.log(`[DEBUG] Unknown driver, skipping`);
+      return null;
     }
 
     if (result && result.url) {
@@ -495,10 +654,7 @@ async function getSeriesStreams(id) {
 
       let driver = 'Unknown';
       if (fullUrl.includes('/asd.php')) driver = 'arabseed';
-      else if (fullUrl.includes('mixdrop')) driver = 'mixdrop';
-      else if (fullUrl.includes('dood')) driver = 'doodstream';
-      else if (fullUrl.includes('streamwish')) driver = 'streamwish';
-      else if (fullUrl.includes('vidguard')) driver = 'vidguard';
+      else if (fullUrl.includes('m2.arabseed.one/play')) driver = 'arabseed-proxy';
       else if (fullUrl.includes('vidmoly')) driver = 'vidmoly';
       else if (fullUrl.includes('filemoon')) driver = 'filemoon';
       else if (fullUrl.includes('voe.sx')) driver = 'voe';
@@ -510,21 +666,12 @@ async function getSeriesStreams(id) {
       console.log(`[DEBUG] Video URL extracted: ${extractionResult?.url || 'null'}`);
 
       if (extractionResult && extractionResult.url) {
-        const streamObject = {
-          name: `Arabseed - ${driver}`,
-          title: driver,
+        streams.push({
+          name: `Arabseed`,
+          title: `${driver} - Quality: 720p`,
           url: extractionResult.url,
-        };
-        
-        // Add behavior hints for Stremio
-        if (extractionResult.headers) {
-          streamObject.behaviorHints = {
-            headers: extractionResult.headers,
-            notWebReady: true // Indicates special headers are needed
-          };
-        }
-        
-        streams.push(streamObject);
+          behaviorHints: extractionResult.behaviorHints || {}
+        });
       } else {
         console.log(`[DEBUG] No video URL extracted for embed URL: ${fullUrl}`);
       }
