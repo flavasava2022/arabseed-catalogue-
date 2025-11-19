@@ -271,9 +271,9 @@ async function getSeriesStreams(id) {
     const response = await axios.get(episodeUrl, { headers: { "User-Agent": USER_AGENT }, timeout: 10000 });
     const $ = cheerio.load(response.data);
 
-    // Debug output for watch button href
-    const watchBtnHref = $('a.watchBTn').attr('href');
-    console.log(`[DEBUG] watchBTn href: ${watchBtnHref}`);
+    // Corrected selector for watch button
+    const watchBtnHref = $('a.watch__btn').attr('href');
+    console.log(`[DEBUG] watch__btn href: ${watchBtnHref}`);
 
     if (watchBtnHref) {
       const watchUrl = watchBtnHref.startsWith('http') ? watchBtnHref : `${BASE_URL}${watchBtnHref}`;
@@ -325,7 +325,7 @@ async function getSeriesStreams(id) {
       console.log(`[DEBUG] Total streams found: ${streams.length}`);
       return streams;
     } else {
-      console.log("[DEBUG] No watchBTn button found");
+      console.log("[DEBUG] No watch__btn button found");
       return [];
     }
   } catch (error) {
