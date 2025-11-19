@@ -241,48 +241,55 @@ async function getSeriesMeta(id) {
   }
 }
 
+
 // Extract from Arabseed's own server (gamehub.cam or similar)
 async function extractArabseedServer(url) {
   try {
     console.log(`[DEBUG] Extracting from Arabseed server: ${url}`);
-    
     const response = await axios.get(url, {
       headers: { "User-Agent": USER_AGENT, Referer: BASE_URL },
       timeout: 10000,
     });
 
     const $ = cheerio.load(response.data);
-    
     const iframeSrc = $('iframe').attr('src');
     console.log(`[DEBUG] Found iframe src: ${iframeSrc}`);
-    
+
     if (!iframeSrc) {
       console.log("[DEBUG] No iframe found in asd.php response");
       return null;
     }
 
     const fullIframeUrl = iframeSrc.startsWith('http') ? iframeSrc : `https:${iframeSrc}`;
-    
     const playerResponse = await axios.get(fullIframeUrl, {
-      headers: { 
-        "User-Agent": USER_AGENT, 
+      headers: {
+        "User-Agent": USER_AGENT,
         Referer: BASE_URL
       },
       timeout: 10000,
     });
 
     const $player = cheerio.load(playerResponse.data);
-    
     const videoSrc = $player('video source').attr('src') || $player('source').attr('src');
-    
+
     if (videoSrc) {
       console.log(`[DEBUG] Arabseed server video URL found: ${videoSrc}`);
       
+      // CRITICAL FIX: Add referrer header for playback
       return {
         url: videoSrc,
         behaviorHints: {
           notWebReady: true,
-          bingeGroup: "arabseed-server"
+          bingeGroup: "arabseed-server",
+          // Add headers for Stremio to use when requesting the video
+          videoHash: videoSrc,
+          headers: {
+            'Referer': 'https://m.arabseed.show/',
+            'User-Agent': USER_AGENT,
+            'Accept': '*/*',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Origin': 'https://m.arabseed.show'
+          }
         }
       };
     }
@@ -290,10 +297,11 @@ async function extractArabseedServer(url) {
     console.log("[DEBUG] No video source found in player page");
     return null;
   } catch (error) {
-    console.error(`[ERROR] Arabseed 2 server extraction failed:`, error.message);
+    console.error(`[ERROR] Arabseed server extraction failed:`, error.message);
     return null;
   }
 }
+
 
 // Handle m2.arabseed.one proxy URLs
 async function extractArabseedProxy(url) {
@@ -580,14 +588,14 @@ async function extractVideoUrl(embedUrl, driver) {
       result = await extractArabseedServer(embedUrl);
     } else if (driver === 'arabseed-proxy') {
       result = await extractArabseedProxy(embedUrl);
-    // } else if (driver === 'vidmoly') {
-    //   result = await extractVidmoly(embedUrl);
-    // } else if (driver === 'filemoon') {
-    //   result = await extractFilemoon(embedUrl);
-    // } else if (driver === 'voe') {
-    //   result = await extractVoe(embedUrl);
-    // } else if (driver === 'savefiles') {
-    //   result = await extractSavefiles(embedUrl);
+    } else if (driver === 'vidmoly') {
+      result = await extractVidmoly(embedUrl);
+    } else if (driver === 'filemoon') {
+      result = await extractFilemoon(embedUrl);
+    } else if (driver === 'voe') {
+      result = await extractVoe(embedUrl);
+    } else if (driver === 'savefiles') {
+      result = await extractSavefiles(embedUrl);
     } else {
       console.log(`[DEBUG] Unknown driver, skipping`);
       return null;
