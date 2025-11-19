@@ -267,26 +267,37 @@ async function getSeriesStreams(id) {
     const episodeUrl = Buffer.from(encodedEpisodeUrl, "base64").toString();
     console.log(`[DEBUG] Fetching streams from episode URL: ${episodeUrl}`);
 
-    // ArabSeed stream extraction logic from watch page
+    // Fetch watch page
     const response = await axios.get(episodeUrl, { headers: { "User-Agent": USER_AGENT }, timeout: 10000 });
     const $ = cheerio.load(response.data);
 
-    const streams = [];
-    const processedSources = new Set();
-
+    // Debug output for watch button href
     const watchBtnHref = $('a.watchBTn').attr('href');
+    console.log(`[DEBUG] watchBTn href: ${watchBtnHref}`);
+
     if (watchBtnHref) {
       const watchUrl = watchBtnHref.startsWith('http') ? watchBtnHref : `${BASE_URL}${watchBtnHref}`;
+      console.log(`[DEBUG] Full watch URL: ${watchUrl}`);
+
       const watchResponse = await axios.get(watchUrl, { headers: { 'User-Agent': USER_AGENT }, timeout: 10000 });
       const $watch = cheerio.load(watchResponse.data);
 
       const liElements = $watch('li[data-link]');
+      console.log(`[DEBUG] Found ${liElements.length} li elements with data-link`);
+
+      const streams = [];
+      const processedSources = new Set();
+
       for (let i = 0; i < liElements.length; i++) {
         const el = liElements[i];
-        const embedUrl = $watch(el).attr('data-link');
+        const $el = $watch(el);
+        const embedUrl = $el.attr('data-link');
+        console.log(`[DEBUG] li[${i}] embedUrl: ${embedUrl}`);
+
         if (embedUrl && !processedSources.has(embedUrl)) {
           processedSources.add(embedUrl);
           const fullUrl = embedUrl.startsWith('http') ? embedUrl : `https:${embedUrl}`;
+          console.log(`[DEBUG] Full embed URL: ${fullUrl}`);
 
           let driver = 'Unknown';
           if (fullUrl.includes('mixdrop')) driver = 'mixdrop';
@@ -294,20 +305,29 @@ async function getSeriesStreams(id) {
           else if (fullUrl.includes('streamwish')) driver = 'streamwish';
           else if (fullUrl.includes('vidguard')) driver = 'vidguard';
 
+          console.log(`[DEBUG] Determined driver: ${driver}`);
+
           const videoUrl = await extractVideoUrl(fullUrl, driver);
+          console.log(`[DEBUG] Video URL extracted: ${videoUrl}`);
+
           if (videoUrl) {
             streams.push({
               name: `Arabseed - ${driver}`,
               title: driver,
               url: videoUrl,
             });
+          } else {
+            console.log(`[DEBUG] No video URL extracted for embed URL: ${fullUrl}`);
           }
         }
       }
-    }
 
-    console.log(`[DEBUG] Total streams found: ${streams.length}`);
-    return streams;
+      console.log(`[DEBUG] Total streams found: ${streams.length}`);
+      return streams;
+    } else {
+      console.log("[DEBUG] No watchBTn button found");
+      return [];
+    }
   } catch (error) {
     console.error('[STREAM ERROR]', error.message);
     return [];
