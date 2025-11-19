@@ -242,6 +242,7 @@ async function getSeriesMeta(id) {
 }
 
 
+
 // Extract from Arabseed's own server (gamehub.cam or similar)
 async function extractArabseedServer(url) {
   try {
@@ -275,21 +276,14 @@ async function extractArabseedServer(url) {
     if (videoSrc) {
       console.log(`[DEBUG] Arabseed server video URL found: ${videoSrc}`);
       
-      // CRITICAL FIX: Add referrer header for playback
+      // Use proxy URL with encoded video URL
+      const proxyUrl = `https://arabseed-catalogue.vercel.app/proxy/arabseed?url=${encodeURIComponent(videoSrc)}`;
+      
       return {
-        url: videoSrc,
+        url: proxyUrl,
         behaviorHints: {
-          notWebReady: true,
-          bingeGroup: "arabseed-server",
-          // Add headers for Stremio to use when requesting the video
-          videoHash: videoSrc,
-          headers: {
-            'Referer': 'https://m.arabseed.show/',
-            'User-Agent': USER_AGENT,
-            'Accept': '*/*',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Origin': 'https://m.arabseed.show'
-          }
+          notWebReady: false,
+          bingeGroup: "arabseed-server"
         }
       };
     }
@@ -301,6 +295,7 @@ async function extractArabseedServer(url) {
     return null;
   }
 }
+
 
 
 // Handle m2.arabseed.one proxy URLs
