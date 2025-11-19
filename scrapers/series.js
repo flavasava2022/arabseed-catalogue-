@@ -580,14 +580,14 @@ async function extractVideoUrl(embedUrl, driver) {
       result = await extractArabseedServer(embedUrl);
     } else if (driver === 'arabseed-proxy') {
       result = await extractArabseedProxy(embedUrl);
-    } else if (driver === 'vidmoly') {
-      result = await extractVidmoly(embedUrl);
-    } else if (driver === 'filemoon') {
-      result = await extractFilemoon(embedUrl);
-    } else if (driver === 'voe') {
-      result = await extractVoe(embedUrl);
-    } else if (driver === 'savefiles') {
-      result = await extractSavefiles(embedUrl);
+    // } else if (driver === 'vidmoly') {
+    //   result = await extractVidmoly(embedUrl);
+    // } else if (driver === 'filemoon') {
+    //   result = await extractFilemoon(embedUrl);
+    // } else if (driver === 'voe') {
+    //   result = await extractVoe(embedUrl);
+    // } else if (driver === 'savefiles') {
+    //   result = await extractSavefiles(embedUrl);
     } else {
       console.log(`[DEBUG] Unknown driver, skipping`);
       return null;
