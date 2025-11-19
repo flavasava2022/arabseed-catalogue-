@@ -1,25 +1,18 @@
-const axios = require("axios").default;
-const { wrapper } = require("axios-cookiejar-support");
-const tough = require("tough-cookie");
+const axios = require("axios");
 const cheerio = require("cheerio");
 const Buffer = require("buffer").Buffer;
-
-// Create axios instance wrapped for cookie support
-const jar = new tough.CookieJar();
-const client = wrapper(axios.create({ jar }));
 
 const BASE_URL = "https://a.asd.homes";
 const SERIES_CATEGORY = "/category/arabic-series-6/";
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 
-// Fetch series catalog
 async function getSeries(skip = 0) {
   try {
     const page = skip > 0 ? Math.floor(skip / 20) + 1 : 1;
     const url = page > 1 ? `${BASE_URL}${SERIES_CATEGORY}page/${page}/` : `${BASE_URL}${SERIES_CATEGORY}`;
     console.log(`[DEBUG] Fetching series page: ${url}`);
 
-    const response = await client.get(url, {
+    const response = await axios.get(url, {
       headers: { "User-Agent": USER_AGENT },
       timeout: 15000,
     });
@@ -49,16 +42,15 @@ async function getSeries(skip = 0) {
       });
     });
 
-    console.log(`[DEBUG] Found ${series.length} series`);
+    console.log(`[DEBUG] Total series parsed: ${series.length}`);
     return series;
   } catch (error) {
-    console.error("[ERROR] getSeries error:", error.message);
+    console.error(`[ERROR] Failed to fetch series catalog:`, error);
     return [];
   }
 }
 
-// Fetch all episodes for a season
-async function fetchAllEpisodesForSeason(seasonId, refererUrl, csrfToken) {
+async function fetchAllEpisodesForSeason(seasonId, refererUrl, csrfToken, cookies) {
   const episodes = [];
   let offset = 0;
   let hasMore = true;
@@ -70,44 +62,51 @@ async function fetchAllEpisodesForSeason(seasonId, refererUrl, csrfToken) {
       postData.append("csrf_token", csrfToken);
       postData.append("offset", offset);
 
-      console.log(`[DEBUG] Fetching episodes AJAX season_id=${seasonId} offset=${offset}`);
+      console.log(`[DEBUG] Sending AJAX POST for episodes. SeasonId: ${seasonId}, Offset: ${offset}`);
 
-      const response = await client.post(`${BASE_URL}/season__episodes/`, postData.toString(), {
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-          "User-Agent": USER_AGENT,
-          "X-Requested-With": "XMLHttpRequest",
-          Referer: refererUrl,
-          Accept: "application/json, text/javascript, */*; q=0.01",
-          Origin: BASE_URL,
-        },
-        timeout: 12000,
-      });
-
-      console.log(`[DEBUG] AJAX response status: ${response.status}`);
+      const response = await axios.post(
+        `${BASE_URL}/season__episodes/`,
+        postData.toString(),
+        {
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "User-Agent": USER_AGENT,
+            "X-Requested-With": "XMLHttpRequest",
+            Referer: refererUrl,
+            Cookie: cookies,
+            Accept: "application/json, text/javascript, */*; q=0.01",
+            Origin: BASE_URL,
+            "Sec-Fetch-Site": "same-origin",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Dest": "empty",
+          },
+          timeout: 12000,
+        }
+      );
 
       if (!response.data || response.data.type === "error") {
-        console.log(`[DEBUG] AJAX error or empty data: ${JSON.stringify(response.data)}`);
+        console.log(`[DEBUG] AJAX returned error or no data: ${JSON.stringify(response.data)}`);
         break;
       }
 
       if (!response.data.html) {
-        console.log("[DEBUG] No HTML content returned, stopping pagination.");
+        console.log("[DEBUG] No HTML content in episodes AJAX response, stopping pagination.");
         break;
       }
 
       const $ = cheerio.load(response.data.html);
-      let count = 0;
 
-      $("a").each((i, el) => {
-        const $el = $(el);
-        const episodeUrl = $el.attr("href");
-        const episodeTitle = $el.text().trim();
+      let episodesFoundOnPage = 0;
+      $("a").each((i, elem) => {
+        const $elem = $(elem);
+        const episodeUrl = $elem.attr("href");
+        const episodeTitle = $elem.text().trim();
 
         if (!episodeUrl) return;
 
         const match = episodeTitle.match(/\d+/);
         const episodeNum = match ? parseInt(match[0]) : offset + i + 1;
+
         const episodeId = "asd:" + Buffer.from(episodeUrl).toString("base64");
 
         episodes.push({
@@ -118,56 +117,68 @@ async function fetchAllEpisodesForSeason(seasonId, refererUrl, csrfToken) {
           released: new Date().toISOString(),
         });
 
-        count++;
+        episodesFoundOnPage++;
       });
 
-      console.log(`[DEBUG] Episodes found this page: ${count}`);
+      console.log(`[DEBUG] Episodes found this page: ${episodesFoundOnPage}`);
 
-      if (!response.data.hasmore) break;
+      hasMore = response.data.hasmore === true || response.data.hasmore === "true";
       offset += 20;
     } catch (error) {
-      console.error("[ERROR] fetchAllEpisodesForSeason error:", error.message);
+      console.error(`[ERROR] Failed AJAX episode fetch for season ${seasonId} offset ${offset}:`, error.message);
       break;
     }
   }
 
-  console.log(`[DEBUG] Total episodes fetched: ${episodes.length}`);
+  console.log(`[DEBUG] Total episodes fetched for season ${seasonId}: ${episodes.length}`);
   return episodes;
 }
 
-// Fetch series meta with episodes
 async function getSeriesMeta(id) {
   try {
     const seriesUrl = Buffer.from(id.replace("asd:", ""), "base64").toString();
-    console.log(`[DEBUG] Fetching series meta: ${seriesUrl}`);
+    console.log(`[DEBUG] Fetching series meta for URL: ${seriesUrl}`);
 
-    const response = await client.get(seriesUrl, {
+    const response = await axios.get(seriesUrl, {
       headers: { "User-Agent": USER_AGENT },
       timeout: 10000,
     });
 
-    console.log(`[DEBUG] Cookies stored in jar: await jar.getCookies(seriesUrl)}`);
+    const cookies = response.headers['set-cookie']?.join('; ') || '';
+    console.log(`[DEBUG] Cookies captured: ${cookies.substring(0, 100)}...`);
 
     const $ = cheerio.load(response.data);
 
     let csrfToken = '';
-    $('script').each((i, el) => {
-      const scriptContent = $(el).html();
-      if (scriptContent && !csrfToken) {
+    $('script').each((i, elem) => {
+      const scriptContent = $(elem).html();
+      if (scriptContent) {
         const match = scriptContent.match(/main__obj\s*=\s*{[^}]*'csrf__token'\s*:\s*"([a-zA-Z0-9]+)"/);
-        if (match) csrfToken = match[1];
+        if (match && match[1]) {
+          csrfToken = match[1];
+          return false;
+        }
       }
     });
+    console.log(`[DEBUG] Extracted CSRF token from main__obj: ${csrfToken || 'NOT FOUND'}`);
 
-    console.log(`[DEBUG] CSRF token: ${csrfToken}`);
+    const title = $(".post__title h1").text().trim();
+    const posterUrl = $(".poster__single img").attr("src") || $(".poster__single img").attr("data-src");
+    const description = $(".story__text").text().trim();
 
-    // Parse seasons
     const seasons = [];
-    $("#seasons__list ul li").each((i, el) => {
-      const $el = $(el);
-      const seasonId = $el.attr("data-term");
-      const seasonName = $el.find("span").text().trim();
-      if (seasonId) seasons.push({ id: seasonId, name: seasonName, number: i + 1 });
+    $("#seasons__list ul li").each((i, elem) => {
+      const $elem = $(elem);
+      const seasonId = $elem.attr("data-term");
+      const seasonName = $elem.find("span").text().trim();
+
+      if (seasonId) {
+        seasons.push({
+          id: seasonId,
+          name: seasonName,
+          number: i + 1,
+        });
+      }
     });
 
     console.log(`[DEBUG] Seasons detected: ${seasons.length}`);
@@ -176,19 +187,24 @@ async function getSeriesMeta(id) {
 
     if (seasons.length === 0) {
       const loadMoreBtn = $(".load__more__episodes");
-      if (loadMoreBtn.length > 0 && loadMoreBtn.css("pointer-events") !== "none" && loadMoreBtn.css("opacity") !== "0.5") {
+      if (loadMoreBtn.length > 0 &&
+          loadMoreBtn.css("pointer-events") !== "none" &&
+          loadMoreBtn.css("opacity") !== "0.5") {
         const postId = loadMoreBtn.attr("data-id");
         if (postId) {
-          console.log(`[DEBUG] Loading additional episodes with postId: ${postId}`);
-          const moreEpisodes = await fetchAllEpisodesForSeason(postId, seriesUrl, csrfToken);
+          console.log(`[DEBUG] Load more episodes button enabled with postId: ${postId}`);
+          const moreEpisodes = await fetchAllEpisodesForSeason(postId, seriesUrl, csrfToken, cookies);
           moreEpisodes.forEach(ep => ep.season = 1);
           allEpisodes = [...allEpisodes, ...moreEpisodes];
+        } else {
+          console.log("[DEBUG] Load more button found but missing data-id.");
         }
       } else {
-        $(".episodes__list a, .seasons__list a").each((i, el) => {
-          const $el = $(el);
-          const episodeUrl = $el.attr("href");
-          const episodeTitle = $el.text().trim();
+        console.log("[DEBUG] No active load more button, reading episodes from HTML");
+        $(".episodes__list a, .seasons__list a").each((i, elem) => {
+          const $elem = $(elem);
+          const episodeUrl = $elem.attr("href");
+          const episodeTitle = $elem.text().trim();
 
           if (!episodeUrl) return;
 
@@ -207,107 +223,100 @@ async function getSeriesMeta(id) {
       }
     } else {
       for (const season of seasons) {
-        console.log(`[DEBUG] Loading episodes for season "${season.name}" id ${season.id}`);
-        const eps = await fetchAllEpisodesForSeason(season.id, seriesUrl, csrfToken);
-        eps.forEach(ep => ep.season = season.number);
-        allEpisodes = [...allEpisodes, ...eps];
+        console.log(`[DEBUG] Fetching episodes for season "${season.name}" with ID: ${season.id}`);
+        const episodes = await fetchAllEpisodesForSeason(season.id, seriesUrl, csrfToken, cookies);
+        episodes.forEach(ep => ep.season = season.number);
+        allEpisodes = [...allEpisodes, ...episodes];
       }
     }
 
     const uniqueEpisodes = Array.from(new Map(allEpisodes.map(ep => [ep.id, ep])).values());
     uniqueEpisodes.sort((a, b) => (a.season - b.season) || (a.episode - b.episode));
 
-    console.log(`[DEBUG] Total unique episodes: ${uniqueEpisodes.length}`);
-
-    const title = $(".post__title h1").text().trim();
-    const posterUrl = $(".poster__single img").attr("src") || $(".poster__single img").attr("data-src");
-    const description = $(".story__text").text().trim();
+    console.log(`[DEBUG] Total unique episodes gathered: ${uniqueEpisodes.length}`);
 
     return {
       id,
       type: "series",
       name: title,
-      background: posterUrl,
+      background: posterUrl || undefined,
       description,
       videos: uniqueEpisodes,
     };
   } catch (error) {
-    console.error("[ERROR] getSeriesMeta error:", error.message);
+    console.error(`[ERROR] Failed to fetch series meta for ID ${id}:`, error.message);
     return { meta: {} };
   }
 }
 
-// Sample stub: extractVideoUrl implementation placeholder
+// Placeholder for driver-specific video URL extraction
 async function extractVideoUrl(url, driver) {
-  // Implement driver specific extraction logic here
-  return url; // For now just return the url
+  // Implement extraction logic per streaming host here
+  // For now, return the input URL for demo purposes
+  return url;
 }
 
-// Fetch streams from episode page using ArabSeed watch page approach
 async function getSeriesStreams(id) {
   try {
     const encodedEpisodeUrl = id.split(":")[1];
     if (!encodedEpisodeUrl) {
-      console.log("[DEBUG] No encoded URL in stream ID");
+      console.log(`[DEBUG] No URL found in series stream ID: ${id}`);
       return [];
     }
 
     const episodeUrl = Buffer.from(encodedEpisodeUrl, "base64").toString();
-    console.log(`[DEBUG] Fetching episode page for streams: ${episodeUrl}`);
+    console.log(`[DEBUG] Fetching streams from episode URL: ${episodeUrl}`);
 
-    const response = await client.get(episodeUrl, { headers: { "User-Agent": USER_AGENT } });
+    // ArabSeed stream extraction logic from watch page
+    const response = await axios.get(episodeUrl, { headers: { "User-Agent": USER_AGENT }, timeout: 10000 });
     const $ = cheerio.load(response.data);
 
     const streams = [];
     const processedSources = new Set();
 
     const watchBtnHref = $('a.watchBTn').attr('href');
-    if (!watchBtnHref) {
-      console.log("[DEBUG] No watch button found");
-      return [];
-    }
-    const watchUrl = watchBtnHref.startsWith("http") ? watchBtnHref : `${BASE_URL}${watchBtnHref}`;
+    if (watchBtnHref) {
+      const watchUrl = watchBtnHref.startsWith('http') ? watchBtnHref : `${BASE_URL}${watchBtnHref}`;
+      const watchResponse = await axios.get(watchUrl, { headers: { 'User-Agent': USER_AGENT }, timeout: 10000 });
+      const $watch = cheerio.load(watchResponse.data);
 
-    console.log(`[DEBUG] Fetching watch page: ${watchUrl}`);
+      const liElements = $watch('li[data-link]');
+      for (let i = 0; i < liElements.length; i++) {
+        const el = liElements[i];
+        const embedUrl = $watch(el).attr('data-link');
+        if (embedUrl && !processedSources.has(embedUrl)) {
+          processedSources.add(embedUrl);
+          const fullUrl = embedUrl.startsWith('http') ? embedUrl : `https:${embedUrl}`;
 
-    const watchResponse = await client.get(watchUrl, { headers: { "User-Agent": USER_AGENT } });
-    const $watch = cheerio.load(watchResponse.data);
+          let driver = 'Unknown';
+          if (fullUrl.includes('mixdrop')) driver = 'mixdrop';
+          else if (fullUrl.includes('dood')) driver = 'doodstream';
+          else if (fullUrl.includes('streamwish')) driver = 'streamwish';
+          else if (fullUrl.includes('vidguard')) driver = 'vidguard';
 
-    $watch("li[data-link]").each(async (i, el) => {
-      const embedUrl = $watch(el).attr("data-link");
-      if (embedUrl && !processedSources.has(embedUrl)) {
-        processedSources.add(embedUrl);
-        const fullUrl = embedUrl.startsWith("http") ? embedUrl : `https:${embedUrl}`;
-
-        let driver = "Unknown";
-        if (fullUrl.includes("mixdrop")) driver = "mixdrop";
-        else if (fullUrl.includes("dood")) driver = "doodstream";
-        else if (fullUrl.includes("streamwish")) driver = "streamwish";
-        else if (fullUrl.includes("vidguard")) driver = "vidguard";
-
-        const videoUrl = await extractVideoUrl(fullUrl, driver);
-        if (videoUrl) {
-          streams.push({
-            name: `Arabseed - ${driver}`,
-            title: driver,
-            url: videoUrl,
-          });
-          console.log(`[DEBUG] Added stream from driver: ${driver} URL: ${videoUrl}`);
+          const videoUrl = await extractVideoUrl(fullUrl, driver);
+          if (videoUrl) {
+            streams.push({
+              name: `Arabseed - ${driver}`,
+              title: driver,
+              url: videoUrl,
+            });
+          }
         }
       }
-    });
-
-    // Wait for all async extraction to finish (since .each callback is async)
-    // This is a simplistic approach; you might want to refactor to use for-loops with await
-    await new Promise(r => setTimeout(r, 1000));
+    }
 
     console.log(`[DEBUG] Total streams found: ${streams.length}`);
-
     return streams;
   } catch (error) {
-    console.error("[STREAM ERROR]", error.message);
+    console.error('[STREAM ERROR]', error.message);
     return [];
   }
 }
 
-module.exports = { getSeries, getSeriesMeta, getSeriesStreams, extractVideoUrl };
+module.exports = {
+  getSeries,
+  getSeriesMeta,
+  getSeriesStreams,
+  extractVideoUrl,
+};
