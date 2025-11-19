@@ -51,7 +51,6 @@ async function getSeries(skip = 0) {
   }
 }
 
-// Fetch all episodes for a season via AJAX pagination
 async function fetchAllEpisodesForSeason(seasonId, refererUrl, csrfToken, cookies) {
   const episodes = [];
   let offset = 0;
@@ -136,10 +135,9 @@ async function fetchAllEpisodesForSeason(seasonId, refererUrl, csrfToken, cookie
   return episodes;
 }
 
-// Fetch series metadata including episodes and seasons
 async function getSeriesMeta(id) {
+  const seriesUrl = Buffer.from(id.replace("asd:", ""), "base64").toString();
   try {
-    const seriesUrl = Buffer.from(id.replace("asd:", ""), "base64").toString();
     console.log(`[DEBUG] Fetching series meta for URL: ${seriesUrl}`);
 
     const response = await axios.get(seriesUrl, {
@@ -190,9 +188,7 @@ async function getSeriesMeta(id) {
 
     if (seasons.length === 0) {
       const loadMoreBtn = $(".load__more__episodes");
-      if (loadMoreBtn.length > 0 &&
-          loadMoreBtn.css("pointer-events") !== "none" &&
-          loadMoreBtn.css("opacity") !== "0.5") {
+      if (loadMoreBtn.length > 0 && loadMoreBtn.css("pointer-events") !== "none" && loadMoreBtn.css("opacity") !== "0.5") {
         const postId = loadMoreBtn.attr("data-id");
         if (postId) {
           console.log(`[DEBUG] Load more episodes button enabled with postId: ${postId}`);
@@ -238,231 +234,127 @@ async function getSeriesMeta(id) {
 
     console.log(`[DEBUG] Total unique episodes gathered: ${uniqueEpisodes.length}`);
 
-    return {
-      id,
-      type: "series",
-      name: title,
-      background: posterUrl || undefined,
-      description,
-      videos: uniqueEpisodes,
-    };
+    return { id, type: "series", name: title, background: posterUrl || undefined, description, videos: uniqueEpisodes };
   } catch (error) {
     console.error(`[ERROR] Failed to fetch series meta for ID ${id}:`, error.message);
     return { meta: {} };
   }
 }
 
-// Host-specific extraction functions
-
-async function extractVidmoly(url) {
-  try {
-    console.log(`[DEBUG] Extracting from Vidmoly: ${url}`);
-    const response = await axios.get(url, {
-      headers: { "User-Agent": USER_AGENT, Referer: url },
-      timeout: 10000,
-    });
-
-    const html = response.data;
-    
-    // Try multiple patterns for vidmoly
-    const patterns = [
-      /sources\s*:\s*\[\s*\{\s*file\s*:\s*"([^"]+)"/,
-      /file\s*:\s*"([^"]+\.m3u8[^"]*)"/,
-      /"file"\s*:\s*"([^"]+\.m3u8[^"]*)"/,
-    ];
-
-    for (const pattern of patterns) {
-      const match = html.match(pattern);
-      if (match && match[1]) {
-        console.log(`[DEBUG] Vidmoly video URL found: ${match[1]}`);
-        return match[1];
-      }
-    }
-
-    console.log(`[DEBUG] Vidmoly: No video URL found`);
-    return null;
-  } catch (error) {
-    console.error(`[ERROR] Vidmoly extraction failed:`, error.message);
-    return null;
-  }
-}
-
-async function extractFilemoon(url) {
-  try {
-    console.log(`[DEBUG] Extracting from Filemoon: ${url}`);
-    const response = await axios.get(url, {
-      headers: { "User-Agent": USER_AGENT, Referer: url },
-      timeout: 10000,
-    });
-
-    const $ = cheerio.load(response.data);
-    const html = response.data;
-
-    // Check for source tags first
-    let sourceUrl = $('source[type="application/vnd.apple.mpegurl"]').attr('src') ||
-                    $('source[type="application/x-mpegURL"]').attr('src') ||
-                    $('source').attr('src');
-
-    if (sourceUrl) {
-      sourceUrl = sourceUrl.startsWith('http') ? sourceUrl : `https:${sourceUrl}`;
-      console.log(`[DEBUG] Filemoon source URL found: ${sourceUrl}`);
-      return sourceUrl;
-    }
-
-    // Try regex patterns
-    const patterns = [
-      /file\s*:\s*"([^"]+\.m3u8[^"]*)"/,
-      /"file"\s*:\s*"([^"]+\.m3u8[^"]*)"/,
-      /sources\s*:\s*\[\s*\{\s*file\s*:\s*"([^"]+)"/,
-    ];
-
-    for (const pattern of patterns) {
-      const match = html.match(pattern);
-      if (match && match[1]) {
-        console.log(`[DEBUG] Filemoon video URL found: ${match[1]}`);
-        return match[1].startsWith('http') ? match[1] : `https:${match[1]}`;
-      }
-    }
-
-    console.log(`[DEBUG] Filemoon: No video URL found`);
-    return null;
-  } catch (error) {
-    console.error(`[ERROR] Filemoon extraction failed:`, error.message);
-    return null;
-  }
-}
-
-async function extractVoe(url) {
-  try {
-    console.log(`[DEBUG] Extracting from Voe.sx: ${url}`);
-    const response = await axios.get(url, {
-      headers: { "User-Agent": USER_AGENT, Referer: url },
-      timeout: 10000,
-    });
-
-    const html = response.data;
-
-    // Voe.sx typically has m3u8 URLs in scripts
-    const patterns = [
-      /'hls'\s*:\s*'([^']+\.m3u8[^']*)'/,
-      /"hls"\s*:\s*"([^"]+\.m3u8[^"]*)"/,
-      /prompt\([^)]*\);[^}]*sources\s*:\s*\{\s*hls\s*:\s*'([^']+)'/,
-      /video_link\s*=\s*"([^"]+\.m3u8[^"]*)"/,
-    ];
-
-    for (const pattern of patterns) {
-      const match = html.match(pattern);
-      if (match && match[1]) {
-        console.log(`[DEBUG] Voe.sx video URL found: ${match[1]}`);
-        return match[1];
-      }
-    }
-
-    console.log(`[DEBUG] Voe.sx: No video URL found`);
-    return null;
-  } catch (error) {
-    console.error(`[ERROR] Voe.sx extraction failed:`, error.message);
-    return null;
-  }
-}
-
-async function extractSavefiles(url) {
-  try {
-    console.log(`[DEBUG] Extracting from Savefiles: ${url}`);
-    const response = await axios.get(url, {
-      headers: { "User-Agent": USER_AGENT, Referer: url },
-      timeout: 10000,
-    });
-
-    const $ = cheerio.load(response.data);
-    const html = response.data;
-
-    // Check for source tags
-    let sourceUrl = $('video source').attr('src') || $('source').attr('src');
-
-    if (sourceUrl) {
-      sourceUrl = sourceUrl.startsWith('http') ? sourceUrl : `https:${sourceUrl}`;
-      console.log(`[DEBUG] Savefiles source URL found: ${sourceUrl}`);
-      return sourceUrl;
-    }
-
-    // Try regex patterns
-    const patterns = [
-      /file\s*:\s*"([^"]+\.(m3u8|mp4)[^"]*)"/,
-      /"file"\s*:\s*"([^"]+\.(m3u8|mp4)[^"]*)"/,
-      /sources\s*:\s*\[\s*"([^"]+)"/,
-      /https?:\/\/[^"'\s]+\.(m3u8|mp4)[^"'\s]*/,
-    ];
-
-    for (const pattern of patterns) {
-      const match = html.match(pattern);
-      if (match && match[1]) {
-        console.log(`[DEBUG] Savefiles video URL found: ${match[1]}`);
-        return match[1];
-      }
-    }
-
-    console.log(`[DEBUG] Savefiles: No video URL found`);
-    return null;
-  } catch (error) {
-    console.error(`[ERROR] Savefiles extraction failed:`, error.message);
-    return null;
-  }
-}
-
-// Main extraction router
-async function extractVideoUrl(embedUrl, driver) {
-  console.log(`[DEBUG] Extracting video URL for driver: ${driver}, url: ${embedUrl}`);
-
-  let videoUrl = null;
+async function extractVideoUrl(url, driver) {
+  console.log(`[DEBUG] Extracting video URL for driver: ${driver}, url: ${url}`);
 
   try {
     if (driver === 'vidmoly') {
-      videoUrl = await extractVidmoly(embedUrl);
-    } else if (driver === 'filemoon') {
-      videoUrl = await extractFilemoon(embedUrl);
-    } else if (driver === 'voe') {
-      videoUrl = await extractVoe(embedUrl);
-    } else if (driver === 'savefiles') {
-      videoUrl = await extractSavefiles(embedUrl);
-    } else {
-      // Generic extraction fallback
-      console.log(`[DEBUG] Using generic extraction for ${driver}`);
-      const response = await axios.get(embedUrl, {
-        headers: { "User-Agent": USER_AGENT, Referer: embedUrl },
-        timeout: 10000,
-      });
+      const response = await axios.get(url, { headers: { "User-Agent": USER_AGENT }, timeout: 10000 });
+      const html = response.data;
 
+      const patterns = [
+        /sources\s*:\s*\[\s*\{\s*file\s*:\s*"([^"]+)"/,
+        /file\s*:\s*"([^"]+\.m3u8[^"]*)"/,
+        /"file"\s*:\s*"([^"]+\.m3u8[^"]*)"/
+      ];
+
+      for (const pattern of patterns) {
+        const match = html.match(pattern);
+        if (match && match[1]) {
+          console.log(`[DEBUG] Vidmoly video URL found: ${match[1]}`);
+          return match[1];
+        }
+      }
+      console.log(`[DEBUG] Vidmoly: No video URL found`);
+      return url;
+    }
+    else if (driver === 'filemoon') {
+      const response = await axios.get(url, { headers: { "User-Agent": USER_AGENT }, timeout: 10000 });
+      const $ = cheerio.load(response.data);
+
+      let sourceUrl = $('source[type="application/vnd.apple.mpegurl"]').attr('src') ||
+                      $('source[type="application/x-mpegURL"]').attr('src') ||
+                      $('source').attr('src');
+
+      if (sourceUrl) {
+        sourceUrl = sourceUrl.startsWith('http') ? sourceUrl : `https:${sourceUrl}`;
+        console.log(`[DEBUG] Filemoon source URL found: ${sourceUrl}`);
+        return sourceUrl;
+      }
+      const html = response.data;
       const patterns = [
         /file\s*:\s*"([^"]+\.m3u8[^"]*)"/,
         /"file"\s*:\s*"([^"]+\.m3u8[^"]*)"/,
         /sources\s*:\s*\[\s*\{\s*file\s*:\s*"([^"]+)"/,
-        /file\s*:\s*"([^"]+\.mp4[^"]*)"/,
       ];
 
       for (const pattern of patterns) {
-        const match = response.data.match(pattern);
+        const match = html.match(pattern);
         if (match && match[1]) {
-          videoUrl = match[1];
-          break;
+          console.log(`[DEBUG] Filemoon video URL found: ${match[1]}`);
+          return match[1].startsWith('http') ? match[1] : `https:${match[1]}`;
         }
       }
+      console.log(`[DEBUG] Filemoon: No video URL found`);
+      return url;
     }
+    else if (driver === 'voe') {
+      const response = await axios.get(url, { headers: { "User-Agent": USER_AGENT }, timeout: 10000 });
+      const html = response.data;
+      const patterns = [
+        /'hls'\s*:\s*'([^']+\.m3u8[^']*)'/,
+        /"hls"\s*:\s*"([^"]+\.m3u8[^"]*)"/,
+        /prompt\([^)]*\);[^}]*sources\s*:\s*\{\s*hls\s*:\s*'([^']+)'/,
+        /video_link\s*=\s*"([^"]+\.m3u8[^"]*)"/,
+      ];
 
-    if (videoUrl) {
-      console.log(`[DEBUG] ✓ ${driver} extraction successful: ${videoUrl.substring(0, 60)}...`);
-    } else {
-      console.log(`[DEBUG] ✗ ${driver} extraction failed`);
+      for (const pattern of patterns) {
+        const match = html.match(pattern);
+        if (match && match[1]) {
+          console.log(`[DEBUG] Voe.sx video URL found: ${match[1]}`);
+          return match[1];
+        }
+      }
+      console.log(`[DEBUG] Voe.sx: No video URL found`);
+      return url;
     }
+    else if (driver === 'savefiles') {
+      const response = await axios.get(url, { headers: { "User-Agent": USER_AGENT }, timeout: 10000 });
+      const $ = cheerio.load(response.data);
 
-    return videoUrl;
+      let sourceUrl = $('video source').attr('src') || $('source').attr('src');
+
+      if (sourceUrl) {
+        sourceUrl = sourceUrl.startsWith('http') ? sourceUrl : `https:${sourceUrl}`;
+        console.log(`[DEBUG] Savefiles source URL found: ${sourceUrl}`);
+        return sourceUrl;
+      }
+      const html = response.data;
+      const patterns = [
+        /file\s*:\s*"([^"]+\.(m3u8|mp4)[^"]*)"/,
+        /"file"\s*:\s*"([^"]+\.(m3u8|mp4)[^"]*)"/,
+        /sources\s*:\s*\[\s*"([^"]+)"/,
+        /https?:\/\/[^"'\s]+\.(m3u8|mp4)[^"'\s]*/,
+      ];
+
+      for (const pattern of patterns) {
+        const match = html.match(pattern);
+        if (match && match[1]) {
+          console.log(`[DEBUG] Savefiles video URL found: ${match[1]}`);
+          return match[1];
+        }
+      }
+      console.log(`[DEBUG] Savefiles: No video URL found`);
+      return url;
+    }
+    else {
+      console.log(`[DEBUG] Unknown driver or no extractor implemented, returning original URL`);
+      return url;
+    }
   } catch (error) {
-    console.error(`[ERROR] extractVideoUrl failed for ${driver}:`, error.message);
-    return null;
+    console.error(`[ERROR] extractVideoUrl failed for driver ${driver} and url ${url}:`, error.message);
+    return url;
   }
 }
 
-// Fetch streams for a given episode
+// Fetch episode streams
 async function getSeriesStreams(id) {
   try {
     const encodedEpisodeUrl = id.split(":")[1];
@@ -480,63 +372,63 @@ async function getSeriesStreams(id) {
     const watchBtnHref = $('a.watch__btn').attr('href');
     console.log(`[DEBUG] watch__btn href: ${watchBtnHref}`);
 
-    if (watchBtnHref) {
-      const watchUrl = watchBtnHref.startsWith('http') ? watchBtnHref : `${BASE_URL}${watchBtnHref}`;
-      console.log(`[DEBUG] Full watch URL: ${watchUrl}`);
-
-      const watchResponse = await axios.get(watchUrl, { headers: { 'User-Agent': USER_AGENT }, timeout: 10000 });
-      const $watch = cheerio.load(watchResponse.data);
-
-      const liElements = $watch('li[data-link]');
-      console.log(`[DEBUG] Found ${liElements.length} li elements with data-link`);
-
-      const streams = [];
-      const processedSources = new Set();
-
-      for (let i = 0; i < liElements.length; i++) {
-        const el = liElements[i];
-        const $el = $watch(el);
-        const embedUrl = $el.attr('data-link');
-        console.log(`[DEBUG] li[${i}] embedUrl: ${embedUrl}`);
-
-        if (embedUrl && !processedSources.has(embedUrl)) {
-          processedSources.add(embedUrl);
-          const fullUrl = embedUrl.startsWith('http') ? embedUrl : `https:${embedUrl}`;
-          console.log(`[DEBUG] Full embed URL: ${fullUrl}`);
-
-          let driver = 'Unknown';
-          if (fullUrl.includes('mixdrop')) driver = 'mixdrop';
-          else if (fullUrl.includes('dood')) driver = 'doodstream';
-          else if (fullUrl.includes('streamwish')) driver = 'streamwish';
-          else if (fullUrl.includes('vidguard')) driver = 'vidguard';
-          else if (fullUrl.includes('vidmoly')) driver = 'vidmoly';
-          else if (fullUrl.includes('filemoon')) driver = 'filemoon';
-          else if (fullUrl.includes('voe.sx')) driver = 'voe';
-          else if (fullUrl.includes('savefiles')) driver = 'savefiles';
-
-          console.log(`[DEBUG] Determined driver: ${driver}`);
-
-          const videoUrl = await extractVideoUrl(fullUrl, driver);
-          console.log(`[DEBUG] Video URL extracted: ${videoUrl || 'null'}`);
-
-          if (videoUrl) {
-            streams.push({
-              name: `Arabseed - ${driver}`,
-              title: driver,
-              url: videoUrl,
-            });
-          } else {
-            console.log(`[DEBUG] No video URL extracted for embed URL: ${fullUrl}`);
-          }
-        }
-      }
-
-      console.log(`[DEBUG] Total streams found: ${streams.length}`);
-      return streams;
-    } else {
+    if (!watchBtnHref) {
       console.log("[DEBUG] No watch__btn button found");
       return [];
     }
+
+    const watchUrl = watchBtnHref.startsWith('http') ? watchBtnHref : `${BASE_URL}${watchBtnHref}`;
+    console.log(`[DEBUG] Full watch URL: ${watchUrl}`);
+
+    const watchResponse = await axios.get(watchUrl, { headers: { 'User-Agent': USER_AGENT }, timeout: 10000 });
+    const $watch = cheerio.load(watchResponse.data);
+
+    const liElements = $watch('li[data-link]');
+    console.log(`[DEBUG] Found ${liElements.length} li elements with data-link`);
+
+    const streams = [];
+    const processedSources = new Set();
+
+    for (let i = 0; i < liElements.length; i++) {
+      const el = liElements[i];
+      const $el = $watch(el);
+      const embedUrl = $el.attr('data-link');
+      console.log(`[DEBUG] li[${i}] embedUrl: ${embedUrl}`);
+
+      if (!embedUrl || processedSources.has(embedUrl)) continue;
+      processedSources.add(embedUrl);
+
+      const fullUrl = embedUrl.startsWith('http') ? embedUrl : `${new URL(embedUrl, BASE_URL).href}`;
+      console.log(`[DEBUG] Full embed URL: ${fullUrl}`);
+
+      let driver = 'Unknown';
+      if (fullUrl.includes('mixdrop')) driver = 'mixdrop';
+      else if (fullUrl.includes('dood')) driver = 'doodstream';
+      else if (fullUrl.includes('streamwish')) driver = 'streamwish';
+      else if (fullUrl.includes('vidguard')) driver = 'vidguard';
+      else if (fullUrl.includes('vidmoly')) driver = 'vidmoly';
+      else if (fullUrl.includes('filemoon')) driver = 'filemoon';
+      else if (fullUrl.includes('voe.sx')) driver = 'voe';
+      else if (fullUrl.includes('savefiles')) driver = 'savefiles';
+
+      console.log(`[DEBUG] Determined driver: ${driver}`);
+
+      const videoUrl = await extractVideoUrl(fullUrl, driver);
+      console.log(`[DEBUG] Video URL extracted: ${videoUrl || 'null'}`);
+
+      if (videoUrl) {
+        streams.push({
+          name: `Arabseed - ${driver}`,
+          title: driver,
+          url: videoUrl,
+        });
+      } else {
+        console.log(`[DEBUG] No video URL extracted for embed URL: ${fullUrl}`);
+      }
+    }
+
+    console.log(`[DEBUG] Total streams found: ${streams.length}`);
+    return streams;
   } catch (error) {
     console.error('[STREAM ERROR]', error.message);
     return [];
