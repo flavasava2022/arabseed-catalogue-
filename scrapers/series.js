@@ -6,6 +6,7 @@ const BASE_URL = "https://a.asd.homes";
 const SERIES_CATEGORY = "/category/arabic-series-6/";
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 
+// Fetch series list
 async function getSeries(skip = 0) {
   try {
     const page = skip > 0 ? Math.floor(skip / 20) + 1 : 1;
@@ -50,6 +51,7 @@ async function getSeries(skip = 0) {
   }
 }
 
+// Fetch all episodes for a season via AJAX pagination
 async function fetchAllEpisodesForSeason(seasonId, refererUrl, csrfToken, cookies) {
   const episodes = [];
   let offset = 0;
@@ -134,6 +136,7 @@ async function fetchAllEpisodesForSeason(seasonId, refererUrl, csrfToken, cookie
   return episodes;
 }
 
+// Fetch series metadata including episodes and seasons
 async function getSeriesMeta(id) {
   try {
     const seriesUrl = Buffer.from(id.replace("asd:", ""), "base64").toString();
@@ -249,13 +252,80 @@ async function getSeriesMeta(id) {
   }
 }
 
-// Placeholder for driver-specific video URL extraction
+// Extract playable video URL from embed page URL according to driver
 async function extractVideoUrl(url, driver) {
-  // Implement extraction logic per streaming host here
-  // For now, return the input URL for demo purposes
-  return url;
+  console.log(`[DEBUG] Extracting video URL for driver: ${driver}, url: ${url}`);
+
+  try {
+    if (driver === 'vidmoly') {
+      // Example vidmoly.net extraction logic
+      const response = await axios.get(url, { headers: { "User-Agent": USER_AGENT }, timeout: 10000 });
+      const $ = cheerio.load(response.data);
+
+      // Vidmoly typically has a script with sources array, find it
+      const scriptContent = $('script')
+        .map((i, el) => $(el).html())
+        .get()
+        .find(sc => sc && sc.includes('sources'));
+
+      if (scriptContent) {
+        const match = scriptContent.match(/sources\s*:\s*(\[[^\]]+\])/);
+        if (match && match[1]) {
+          const sourcesJson = match[1].replace(/'/g, '"'); // normalize quotes for JSON parse
+          const sources = JSON.parse(sourcesJson);
+          if (Array.isArray(sources) && sources.length > 0) {
+            console.log(`[DEBUG] vidmoly sources found`);
+            return sources[0].file; // return the first source URL (usually .m3u8 or mp4)
+          }
+        }
+      }
+      console.log(`[DEBUG] vidmoly: No sources found in embed page`);
+      return url; // fallback to original if none found
+    }
+    else if (driver === 'filemoon') {
+      // Example filemoon.sx extraction (simplified)
+      const response = await axios.get(url, { headers: { "User-Agent": USER_AGENT }, timeout: 10000 });
+      const $ = cheerio.load(response.data);
+
+      const sourceTag = $('source[type="application/vnd.apple.mpegurl"]').attr('src') ||
+                        $('source[type="application/x-mpegURL"]').attr('src');
+      if (sourceTag) {
+        console.log(`[DEBUG] filemoon source URL found: ${sourceTag}`);
+        return sourceTag.startsWith('http') ? sourceTag : `https:${sourceTag}`;
+      }
+      console.log(`[DEBUG] filemoon: No valid source tag found`);
+      return url;
+    }
+    else if (driver === 'doodstream') {
+      // Placeholder: doodstream extraction logic to be implemented
+      // For demo, just return URL
+      console.log(`[DEBUG] doodstream extractor: returning URL as is`);
+      return url;
+    }
+    else if (driver === 'mixdrop') {
+      // Placeholder: mixdrop extraction logic to be implemented
+      console.log(`[DEBUG] mixdrop extractor: returning URL as is`);
+      return url;
+    }
+    else if (driver === 'streamwish') {
+      console.log(`[DEBUG] streamwish extractor: returning URL as is`);
+      return url;
+    }
+    else if (driver === 'vidguard') {
+      console.log(`[DEBUG] vidguard extractor: returning URL as is`);
+      return url;
+    }
+    else {
+      console.log(`[DEBUG] Unknown driver or no extractor implemented, return original url`);
+      return url;
+    }
+  } catch (err) {
+    console.error(`[ERROR] extractVideoUrl failed for driver ${driver} and url ${url}:`, err.message);
+    return url;
+  }
 }
 
+// Fetch streams for a given episode
 async function getSeriesStreams(id) {
   try {
     const encodedEpisodeUrl = id.split(":")[1];
@@ -271,7 +341,7 @@ async function getSeriesStreams(id) {
     const response = await axios.get(episodeUrl, { headers: { "User-Agent": USER_AGENT }, timeout: 10000 });
     const $ = cheerio.load(response.data);
 
-    // Corrected selector for watch button
+    // Corrected selector for watch button class
     const watchBtnHref = $('a.watch__btn').attr('href');
     console.log(`[DEBUG] watch__btn href: ${watchBtnHref}`);
 
@@ -304,6 +374,8 @@ async function getSeriesStreams(id) {
           else if (fullUrl.includes('dood')) driver = 'doodstream';
           else if (fullUrl.includes('streamwish')) driver = 'streamwish';
           else if (fullUrl.includes('vidguard')) driver = 'vidguard';
+          else if (fullUrl.includes('vidmoly')) driver = 'vidmoly';
+          else if (fullUrl.includes('filemoon')) driver = 'filemoon';
 
           console.log(`[DEBUG] Determined driver: ${driver}`);
 
