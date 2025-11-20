@@ -18,7 +18,7 @@ async function searchArabSeed(query, filterType) {
     console.log(`[DEBUG] Searching for: "${query}", filter: ${filterType}`);
 
     // Search without type filter to get all results
-    const searchUrl = `${BASE_URL}/find/?word=${encodeURIComponent(
+    const searchUrl = `https://a.asd.homes/find/?word=${encodeURIComponent(
       query
     )}&type=`;
     console.log(`[DEBUG] Search URL: ${searchUrl}`);
