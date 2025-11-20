@@ -30,9 +30,10 @@ async function getMovies(skip = 0) {
       const $elem = $(elem);
       const movieUrl = $elem.attr("href");
       const title = $elem.find(".post__info h3").text().trim();
-      const posterUrl =
-        $elem.find(".post__image img").attr("data-src") ||
-        $elem.find(".post__image img").attr("src");
+    const posterUrl =
+      $(".poster__single img").attr("src") ||
+      $(".poster__single img").attr("data-src");
+
       const description = $elem.find(".post__info p").text().trim();
       const yearMatch = title.match(/\((\d{4})\)/);
       const year = yearMatch ? yearMatch[1] : "";
