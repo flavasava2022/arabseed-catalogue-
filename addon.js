@@ -21,16 +21,13 @@ const catalogHandler = async ({ type, id, extra }) => {
     return { metas };
   }
   if (type === "series" && id === "arabseed-arabic-series") {
-    SERIES_CATEGORY = "/category/arabic-series-6/"
-    const metas = await getSeries(
-      skip,
-      SERIES_CATEGORY 
-    );
+    SERIES_CATEGORY = "/category/arabic-series-6/";
+    const metas = await getSeries(skip, SERIES_CATEGORY);
     return { metas };
   }
   if (type === "series" && id === "arabseed-turkish-series") {
-        SERIES_CATEGORY = "/category/turkish-series-2/"
-    const metas = await getSeries(skip);
+    SERIES_CATEGORY = "/category/turkish-series-2/";
+    const metas = await getSeries(skip, SERIES_CATEGORY);
     return { metas };
   }
   return { metas: [] };
