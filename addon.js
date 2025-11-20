@@ -50,7 +50,7 @@ async function searchArabSeed(query, filterType) {
 
       // Determine if it's a movie or series based on URL or title
       const isSeries =
-        itemUrl.includes("/series/") ||
+        itemUrl.includes("/الحلقة/") ||
         itemUrl.includes("/مسلسل/") ||
         title.includes("مسلسل");
 
