@@ -298,6 +298,8 @@ async function getSeriesMeta(id) {
       type: "series",
       name: title,
       background: posterUrl || undefined,
+      poster: posterUrl || undefined,
+      posterShape: "poster",
       description,
       videos: uniqueEpisodes,
     };
