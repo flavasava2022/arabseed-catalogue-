@@ -83,6 +83,9 @@ async function extractArabseedProxy(url) {
 
 // Extract from Vidmoly
 async function extractVidmoly(url) {
+  const axios = require("axios");
+  const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
+
   try {
     console.log(`[DEBUG] Vidmoly: Extracting from: ${url}`);
     const response = await axios.get(url, {
@@ -91,33 +94,44 @@ async function extractVidmoly(url) {
     });
 
     const html = response.data;
-    const patterns = [
-      /sources\s*:\s*\[\s*\{\s*file\s*:\s*"([^"]+)"/,
-      /file\s*:\s*"([^"]+\.m3u8[^"]*)"/,
-      /"file"\s*:\s*"([^"]+\.m3u8[^"]*)"/,
-    ];
 
-    for (const pattern of patterns) {
-      const match = html.match(pattern);
-      if (match && match[1]) {
-        console.log(`[DEBUG] Vidmoly: ✓ Video URL found`);
-        return {
-          url: match[1],
-          behaviorHints: {
-            notWebReady: true,
-            bingeGroup: "vidmoly",
-          },
-        };
-      }
+    // 1. JWPlayer sources/file=m3u8 regex
+    const m3u8Match =
+      html.match(/file\s*:\s*["']([^"']+\.m3u8[^"']*)["']/i) ||
+      html.match(/sources\s*:\s*\[\s*\{\s*file\s*:\s*["']([^"']+\.m3u8[^"']*)["']/i);
+
+    if (m3u8Match && m3u8Match[1]) {
+      console.log(`[DEBUG] Vidmoly: ✓ found m3u8: ${m3u8Match[1]}`);
+      return {
+        url: m3u8Match[1],
+        behaviorHints: {
+          notWebReady: true,
+          bingeGroup: "vidmoly",
+        }
+      };
     }
 
-    console.log(`[DEBUG] Vidmoly: No video URL found`);
+    // 2. Any .m3u8 in HTML as fallback
+    const fallbackM3u8 = html.match(/https?:\/\/[^\s"'<>]+\.m3u8[^\s"'<>]*/i);
+    if (fallbackM3u8) {
+      console.log(`[DEBUG] Vidmoly: ✓ fallback m3u8: ${fallbackM3u8[0]}`);
+      return {
+        url: fallbackM3u8[0],
+        behaviorHints: {
+          notWebReady: true,
+          bingeGroup: "vidmoly",
+        }
+      };
+    }
+
+    console.log(`[DEBUG] Vidmoly: ✗ no video found`);
     return null;
-  } catch (error) {
-    console.error(`[ERROR] Vidmoly extraction failed:`, error.message);
+  } catch (err) {
+    console.error(`[ERROR] Vidmoly extraction failed:`, err.message);
     return null;
   }
 }
+
 
 // Extract from Filemoon
 async function extractFilemoon(url) {
