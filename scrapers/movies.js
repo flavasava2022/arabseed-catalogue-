@@ -30,10 +30,9 @@ async function getMovies(skip = 0) {
       const $elem = $(elem);
       const movieUrl = $elem.attr("href");
       const title = $elem.find(".post__info h3").text().trim();
-    const posterUrl =
-      $(".poster__single img").attr("src") ||
-      $(".poster__single img").attr("data-src");
-
+      const posterUrl =
+        $elem.find(".post__image img").attr("data-src") ||
+        $elem.find(".post__image img").attr("src");
       const description = $elem.find(".post__info p").text().trim();
       const yearMatch = title.match(/\((\d{4})\)/);
       const year = yearMatch ? yearMatch[1] : "";
@@ -82,9 +81,8 @@ async function getMovieMeta(id) {
     const title =
       $(".post__title h1").text().trim() || $(".post__name").text().trim();
     const posterUrl =
-      $(".poster__single img")?.attr("src") ||
-      $(".post__image img")?.attr("data-src") ||
-      $(".post__image img")?.attr("src");
+      $(".poster__single img").attr("src") ||
+      $(".poster__single img").attr("data-src");
     const description =
       $(".story__text").text().trim() || $(".post__story").text().trim();
     const year = $(".year").text().trim();
