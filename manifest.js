@@ -20,7 +20,7 @@ module.exports = {
       name: 'مسلسلات عربي',
       extra: [{ name: 'skip', isRequired: false }]
     }
-        {
+        ,{
       type: 'series',
       id: 'arabseed-turkish-series',
       name: 'مسلسلات تركي',
