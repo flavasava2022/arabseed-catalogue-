@@ -222,18 +222,91 @@ async function extractVoe(url) {
 
 // Extract from Savefiles
 async function extractSavefiles(url) {
-    return {
-        streams: [
-            {
-                // Return embed URL - Stremio will handle extraction
-                url: url,
-                title: "SaveFiles",
-                
-                // Or use external player
-                externalUrl: url
+    const { url } = req.query;
+    
+    if (!url) {
+        return res.status(400).json({ error: 'URL parameter required' });
+    }
+    
+    try {
+        // Extract file ID
+        const fileId = url.match(/\/e\/([a-zA-Z0-9]+)/)?.[1];
+        
+        if (!fileId) {
+            return res.status(400).json({ error: 'Invalid savefiles.com URL' });
+        }
+        
+        // Fetch the embed page
+        const response = await fetch(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
-        ]
-    };
+        });
+        
+        const html = await response.text();
+        
+        // Try multiple extraction patterns
+        const patterns = [
+            // Pattern 1: Direct video tag
+            /<video[^>]+src=["']([^"']+)["']/i,
+            /<source[^>]+src=["']([^"']+)["']/i,
+            
+            // Pattern 2: JavaScript file variable
+            /file:\s*["']([^"']+\.mp4[^"']*)["']/i,
+            /sources?:\s*\[?\s*{[^}]*file:\s*["']([^"']+)["']/i,
+            
+            // Pattern 3: Video URL in any format
+            /video_url["']?\s*[:=]\s*["']([^"']+)["']/i,
+            /mp4["']?\s*[:=]\s*["']([^"']+)["']/i,
+            
+            // Pattern 4: Direct CDN links
+            /https?:\/\/[^"'\s]+\.mp4[^"'\s]*/i,
+        ];
+        
+        for (const pattern of patterns) {
+            const match = html.match(pattern);
+            if (match && match[1]) {
+                let videoUrl = match[1];
+                
+                // Handle relative URLs
+                if (videoUrl.startsWith('//')) {
+                    videoUrl = 'https:' + videoUrl;
+                } else if (videoUrl.startsWith('/')) {
+                    videoUrl = 'https://savefiles.com' + videoUrl;
+                }
+                
+                return res.status(200).json({
+                    success: true,
+                    videoUrl: videoUrl,
+                    method: 'pattern_match'
+                });
+            }
+        }
+        
+        // If no direct match, try to find any .mp4 URL in scripts
+        const allMp4Links = html.match(/https?:\/\/[^"'\s]+\.mp4[^"'\s]*/gi);
+        
+        if (allMp4Links && allMp4Links.length > 0) {
+            return res.status(200).json({
+                success: true,
+                videoUrl: allMp4Links[0],
+                allUrls: allMp4Links,
+                method: 'mp4_scan'
+            });
+        }
+        
+        return res.status(404).json({
+            success: false,
+            error: 'No video URL found',
+            fileId: fileId
+        });
+        
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
 }
 
 // Generic extraction fallback
