@@ -137,155 +137,29 @@ async function extractVidmoly(url) {
 }
 
 // Extract from Filemoon
-// Extract from Filemoon - Enhanced with iframe handling
 async function extractFilemoon(url) {
   try {
     console.log(`[DEBUG] Filemoon: Extracting from: ${url}`);
-    
-    // Step 1: Get the main embed page
-    const embedResponse = await axios.get(url, {
-      headers: { 
-        "User-Agent": USER_AGENT, 
-        "Referer": "https://filemoon.sx/",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-      },
+    const response = await axios.get(url, {
+      headers: { "User-Agent": USER_AGENT, Referer: url },
       timeout: 10000,
     });
 
-    const embedHtml = embedResponse.data;
-    console.log(`[DEBUG] Filemoon: Embed page loaded (${embedHtml.length} chars)`);
+    const $ = cheerio.load(response.data);
+    const html = response.data;
 
-    // Step 2: Extract iframe source URL
-    const $embed = cheerio.load(embedHtml);
-    const iframeSrc = $embed("iframe").attr("src");
-    
-    if (iframeSrc) {
-      console.log(`[DEBUG] Filemoon: Found iframe: ${iframeSrc}`);
-      
-      // Construct full iframe URL if relative
-      let iframeUrl = iframeSrc;
-      if (iframeSrc.startsWith("//")) {
-        iframeUrl = "https:" + iframeSrc;
-      } else if (iframeSrc.startsWith("/")) {
-        iframeUrl = "https://filemoon.sx" + iframeSrc;
-      } else if (!iframeSrc.startsWith("http")) {
-        iframeUrl = "https://" + iframeSrc;
-      }
-      
-      console.log(`[DEBUG] Filemoon: Fetching iframe URL: ${iframeUrl}`);
-      
-      // Step 3: Get the actual player page from iframe
-      const playerResponse = await axios.get(iframeUrl, {
-        headers: {
-          "User-Agent": USER_AGENT,
-          "Referer": url,
-          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-        },
-        timeout: 10000,
-      });
+    let sourceUrl =
+      $('source[type="application/vnd.apple.mpegurl"]').attr("src") ||
+      $('source[type="application/x-mpegURL"]').attr("src") ||
+      $("source").attr("src");
 
-      const playerHtml = playerResponse.data;
-      console.log(`[DEBUG] Filemoon: Player page loaded (${playerHtml.length} chars)`);
-
-      // Step 4: Extract video source from player page
-      const $ = cheerio.load(playerHtml);
-      
-      // Method 1: Direct source tags
-      let sourceUrl = $('source[type="application/vnd.apple.mpegurl"]').attr("src") ||
-                      $('source[type="application/x-mpegURL"]').attr("src") ||
-                      $("video source").attr("src") ||
-                      $("source").attr("src") ||
-                      $("video").attr("src");
-
-      if (sourceUrl) {
-        sourceUrl = sourceUrl.startsWith("http") ? sourceUrl : `https:${sourceUrl}`;
-        console.log(`[DEBUG] Filemoon: ✓ Source URL found from HTML tags: ${sourceUrl}`);
-        return {
-          url: sourceUrl,
-          behaviorHints: {
-            notWebReady: true,
-            bingeGroup: "filemoon",
-          },
-        };
-      }
-
-      // Method 2: JWPlayer patterns in JavaScript
-      const patterns = [
-        // JWPlayer file patterns
-        /file\s*:\s*["']([^"']+\.m3u8[^"']*)["']/i,
-        /"file"\s*:\s*"([^"]+\.m3u8[^"]*)"/i,
-        /sources\s*:\s*\[\s*\{\s*file\s*:\s*["']([^"']+)["']/i,
-        
-        // Generic video URL patterns
-        /"(https?:\/\/[^"]+\.m3u8[^"]*)"/i,
-        /'(https?:\/\/[^']+\.m3u8[^']*)'/i,
-        
-        // Mp4 fallback
-        /file\s*:\s*["']([^"']+\.mp4[^"']*)["']/i,
-        /"(https?:\/\/[^"]+\.mp4[^"]*)"/i,
-      ];
-
-      for (const pattern of patterns) {
-        const match = playerHtml.match(pattern);
-        if (match && match[1]) {
-          let videoUrl = match[1];
-          
-          // Handle relative URLs
-          if (videoUrl.startsWith("//")) {
-            videoUrl = "https:" + videoUrl;
-          } else if (videoUrl.startsWith("/")) {
-            videoUrl = "https://filemoon.sx" + videoUrl;
-          }
-          
-          console.log(`[DEBUG] Filemoon: ✓ Video URL found from player JS: ${videoUrl}`);
-          return {
-            url: videoUrl,
-            behaviorHints: {
-              notWebReady: videoUrl.includes(".m3u8"),
-              bingeGroup: "filemoon",
-            },
-          };
-        }
-      }
-
-      // Method 3: Scan for any m3u8 or mp4 URLs
-      const m3u8Match = playerHtml.match(/https?:\/\/[^\s"'<>]+\.m3u8[^\s"'<>]*/i);
-      if (m3u8Match) {
-        console.log(`[DEBUG] Filemoon: ✓ M3U8 URL found via scan: ${m3u8Match[0]}`);
-        return {
-          url: m3u8Match[0],
-          behaviorHints: {
-            notWebReady: true,
-            bingeGroup: "filemoon",
-          },
-        };
-      }
-
-      const mp4Match = playerHtml.match(/https?:\/\/[^\s"'<>]+\.mp4[^\s"'<>]*/i);
-      if (mp4Match) {
-        console.log(`[DEBUG] Filemoon: ✓ MP4 URL found via scan: ${mp4Match[0]}`);
-        return {
-          url: mp4Match[0],
-          behaviorHints: {
-            notWebReady: false,
-            bingeGroup: "filemoon",
-          },
-        };
-      }
-
-      console.log(`[DEBUG] Filemoon: Player HTML preview (first 500 chars):`);
-      console.log(playerHtml.substring(0, 500));
-    }
-
-    // Fallback: Try extracting directly from embed page (in case no iframe)
-    const $ = cheerio.load(embedHtml);
-    const directSource = $("video source").attr("src") || $("source").attr("src");
-    
-    if (directSource) {
-      const finalUrl = directSource.startsWith("http") ? directSource : `https:${directSource}`;
-      console.log(`[DEBUG] Filemoon: ✓ Direct source found: ${finalUrl}`);
+    if (sourceUrl) {
+      sourceUrl = sourceUrl.startsWith("http")
+        ? sourceUrl
+        : `https:${sourceUrl}`;
+      console.log(`[DEBUG] Filemoon: ✓ Source URL found from HTML`);
       return {
-        url: finalUrl,
+        url: sourceUrl,
         behaviorHints: {
           notWebReady: true,
           bingeGroup: "filemoon",
@@ -293,15 +167,36 @@ async function extractFilemoon(url) {
       };
     }
 
-    console.log(`[DEBUG] Filemoon: ✗ No video URL found after all methods`);
+    const patterns = [
+      /file\s*:\s*"([^"]+\.m3u8[^"]*)"/,
+      /"file"\s*:\s*"([^"]+\.m3u8[^"]*)"/,
+      /sources\s*:\s*\[\s*\{\s*file\s*:\s*"([^"]+)"/,
+    ];
+
+    for (const pattern of patterns) {
+      const match = html.match(pattern);
+      if (match && match[1]) {
+        console.log(`[DEBUG] Filemoon: ✓ Video URL found from regex`);
+        const finalUrl = match[1].startsWith("http")
+          ? match[1]
+          : `https:${match[1]}`;
+        return {
+          url: finalUrl,
+          behaviorHints: {
+            notWebReady: true,
+            bingeGroup: "filemoon",
+          },
+        };
+      }
+    }
+
+    console.log(`[DEBUG] Filemoon: No video URL found`);
     return null;
-    
   } catch (error) {
     console.error(`[ERROR] Filemoon extraction failed:`, error.message);
     return null;
   }
 }
-
 
 // Extract from Voe.sx
 async function extractVoe(url) {
@@ -584,14 +479,19 @@ async function extractVideoUrl(embedUrl, driver) {
       result = await extractArabseedServer(embedUrl);
     } else if (driver === "vidmoly") {
       result = await extractVidmoly(embedUrl);
-    } else if (driver === "filemoon") {
-      result = await extractFilemoon(embedUrl);
-    } else if (driver === "voe") {
-      result = await extractVoe(embedUrl);
     } else {
-      result = await extractGeneric(embedUrl);
+      console.log(`[DEBUG] Unknown driver: ${driver}, skipping`);
+      return null;
     }
+// skip for now 
+// else if (driver === "filemoon") {
+//       result = await extractFilemoon(embedUrl);
+//     } else if (driver === "voe") {
+//       result = await extractVoe(embedUrl);
 
+//     } else if (driver === "generic") {
+//       result = await extractGeneric(embedUrl);
+//     } 
     if (result && result.url) {
       console.log(`[DEBUG] ✓ ${driver} extraction successful`);
     } else {
