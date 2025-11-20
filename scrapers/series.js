@@ -469,10 +469,7 @@ async function getSeriesStreams(id) {
             let driver = "Unknown";
             let extractionUrl = embedUrl;
 
-            if (
-              embedUrl.includes("reviewrate.net") ||
-              embedUrl.includes("embed")
-            ) {
+            if (embedUrl.includes("reviewrate.net")) {
               driver = "arabseed";
             } else if (embedUrl.includes("vidmoly")) {
               driver = "vidmoly";
