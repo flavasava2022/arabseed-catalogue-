@@ -51,6 +51,7 @@ async function getSeries(skip = 0) {
   }
 }
 
+// Fetch all episodes for a season using AJAX
 async function fetchAllEpisodesForSeason(seasonId, refererUrl, csrfToken, cookies) {
   const episodes = [];
   let offset = 0;
@@ -96,8 +97,8 @@ async function fetchAllEpisodesForSeason(seasonId, refererUrl, csrfToken, cookie
       }
 
       const $ = cheerio.load(response.data.html);
-
       let episodesFoundOnPage = 0;
+
       $("a").each((i, elem) => {
         const $elem = $(elem);
         const episodeUrl = $elem.attr("href");
@@ -107,7 +108,6 @@ async function fetchAllEpisodesForSeason(seasonId, refererUrl, csrfToken, cookie
 
         const match = episodeTitle.match(/\d+/);
         const episodeNum = match ? parseInt(match[0]) : offset + i + 1;
-
         const episodeId = "asd:" + Buffer.from(episodeUrl).toString("base64");
 
         episodes.push({
@@ -122,7 +122,6 @@ async function fetchAllEpisodesForSeason(seasonId, refererUrl, csrfToken, cookie
       });
 
       console.log(`[DEBUG] Episodes found this page: ${episodesFoundOnPage}`);
-
       hasMore = response.data.hasmore === true || response.data.hasmore === "true";
       offset += 20;
     } catch (error) {
@@ -135,8 +134,10 @@ async function fetchAllEpisodesForSeason(seasonId, refererUrl, csrfToken, cookie
   return episodes;
 }
 
+// Get series metadata and episodes
 async function getSeriesMeta(id) {
   const seriesUrl = Buffer.from(id.replace("asd:", ""), "base64").toString();
+
   try {
     console.log(`[DEBUG] Fetching series meta for URL: ${seriesUrl}`);
 
@@ -150,6 +151,7 @@ async function getSeriesMeta(id) {
 
     const $ = cheerio.load(response.data);
 
+    // Extract CSRF token
     let csrfToken = '';
     $('script').each((i, elem) => {
       const scriptContent = $(elem).html();
@@ -161,6 +163,7 @@ async function getSeriesMeta(id) {
         }
       }
     });
+
     console.log(`[DEBUG] Extracted CSRF token from main__obj: ${csrfToken || 'NOT FOUND'}`);
 
     const title = $(".post__title h1").text().trim();
@@ -234,38 +237,49 @@ async function getSeriesMeta(id) {
 
     console.log(`[DEBUG] Total unique episodes gathered: ${uniqueEpisodes.length}`);
 
-    return { id, type: "series", name: title, background: posterUrl || undefined, description, videos: uniqueEpisodes };
+    return { 
+      id, 
+      type: "series", 
+      name: title, 
+      background: posterUrl || undefined, 
+      description, 
+      videos: uniqueEpisodes 
+    };
   } catch (error) {
     console.error(`[ERROR] Failed to fetch series meta for ID ${id}:`, error.message);
     return { meta: {} };
   }
 }
 
-
-
-// Extract from Arabseed's own server (gamehub.cam or similar)
-async function extractArabseedServer(url) {
+// Extract from Arabseed server using reviewrate.net -> gamehub.cam conversion
+async function extractArabseedServer(embedCode) {
   try {
-    console.log(`[DEBUG] Extracting from Arabseed server: ${url}`);
-    const response = await axios.get(url, {
+    // Convert reviewrate.net URL to gamehub.cam URL
+    const gamehubUrl = embedCode.replace('https://m.reviewrate.net/', 'https://w5.gamehub.cam/');
+    console.log(`[DEBUG] ArabseedServer: Original URL: ${embedCode}`);
+    console.log(`[DEBUG] ArabseedServer: Converted to Gamehub URL: ${gamehubUrl}`);
+
+    const response = await axios.get(gamehubUrl, {
       headers: { "User-Agent": USER_AGENT, Referer: BASE_URL },
       timeout: 10000,
     });
 
     const $ = cheerio.load(response.data);
     const iframeSrc = $('iframe').attr('src');
-    console.log(`[DEBUG] Found iframe src: ${iframeSrc}`);
+    console.log(`[DEBUG] ArabseedServer: Found iframe src: ${iframeSrc}`);
 
     if (!iframeSrc) {
-      console.log("[DEBUG] No iframe found in asd.php response");
+      console.log("[DEBUG] ArabseedServer: No iframe found in gamehub response");
       return null;
     }
 
     const fullIframeUrl = iframeSrc.startsWith('http') ? iframeSrc : `https:${iframeSrc}`;
+    console.log(`[DEBUG] ArabseedServer: Full iframe URL: ${fullIframeUrl}`);
+
     const playerResponse = await axios.get(fullIframeUrl, {
       headers: {
         "User-Agent": USER_AGENT,
-        Referer: BASE_URL
+        Referer: gamehubUrl
       },
       timeout: 10000,
     });
@@ -274,11 +288,12 @@ async function extractArabseedServer(url) {
     const videoSrc = $player('video source').attr('src') || $player('source').attr('src');
 
     if (videoSrc) {
-      console.log(`[DEBUG] Arabseed server video URL found: ${videoSrc}`);
-      
+      console.log(`[DEBUG] ArabseedServer: ✓ Video URL found: ${videoSrc}`);
+
       // Use proxy URL with encoded video URL
       const proxyUrl = `https://arabseed-catalogue.vercel.app/proxy/arabseed?url=${encodeURIComponent(videoSrc)}`;
-      
+      console.log(`[DEBUG] ArabseedServer: Using proxy URL`);
+
       return {
         url: proxyUrl,
         behaviorHints: {
@@ -288,7 +303,7 @@ async function extractArabseedServer(url) {
       };
     }
 
-    console.log("[DEBUG] No video source found in player page");
+    console.log("[DEBUG] ArabseedServer: No video source found in player page");
     return null;
   } catch (error) {
     console.error(`[ERROR] Arabseed server extraction failed:`, error.message);
@@ -296,26 +311,21 @@ async function extractArabseedServer(url) {
   }
 }
 
-
-
 // Handle m2.arabseed.one proxy URLs
 async function extractArabseedProxy(url) {
   try {
-    console.log(`[DEBUG] Extracting from Arabseed proxy: ${url}`);
-    
-    // Extract and decode the id parameter
+    console.log(`[DEBUG] ArabseedProxy: Extracting from: ${url}`);
     const urlObj = new URL(url);
     const encodedId = urlObj.searchParams.get('id');
-    
+
     if (!encodedId) {
-      console.log("[DEBUG] No id parameter found in proxy URL");
+      console.log("[DEBUG] ArabseedProxy: No id parameter found");
       return null;
     }
-    
+
     const decodedUrl = Buffer.from(encodedId, 'base64').toString();
-    console.log(`[DEBUG] Decoded proxy URL: ${decodedUrl}`);
-    
-    // Determine the actual host and extract accordingly
+    console.log(`[DEBUG] ArabseedProxy: Decoded URL: ${decodedUrl}`);
+
     if (decodedUrl.includes('savefiles')) {
       return await extractSavefiles(decodedUrl);
     } else if (decodedUrl.includes('voe.sx')) {
@@ -324,11 +334,9 @@ async function extractArabseedProxy(url) {
       return await extractFilemoon(decodedUrl);
     } else if (decodedUrl.includes('vidmoly')) {
       return await extractVidmoly(decodedUrl);
-    } else if (decodedUrl.includes('ups2up')) {
-      return await extractGeneric(decodedUrl);
     }
-    
-    console.log(`[DEBUG] Unknown host in proxy URL: ${decodedUrl}`);
+
+    console.log(`[DEBUG] ArabseedProxy: Unknown host in decoded URL`);
     return null;
   } catch (error) {
     console.error(`[ERROR] Arabseed proxy extraction failed:`, error.message);
@@ -336,16 +344,16 @@ async function extractArabseedProxy(url) {
   }
 }
 
+// Extract from Vidmoly
 async function extractVidmoly(url) {
   try {
-    console.log(`[DEBUG] Extracting from Vidmoly: ${url}`);
+    console.log(`[DEBUG] Vidmoly: Extracting from: ${url}`);
     const response = await axios.get(url, {
       headers: { "User-Agent": USER_AGENT, Referer: url },
       timeout: 10000,
     });
 
     const html = response.data;
-    
     const patterns = [
       /sources\s*:\s*\[\s*\{\s*file\s*:\s*"([^"]+)"/,
       /file\s*:\s*"([^"]+\.m3u8[^"]*)"/,
@@ -355,7 +363,7 @@ async function extractVidmoly(url) {
     for (const pattern of patterns) {
       const match = html.match(pattern);
       if (match && match[1]) {
-        console.log(`[DEBUG] Vidmoly video URL found: ${match[1]}`);
+        console.log(`[DEBUG] Vidmoly: ✓ Video URL found`);
         return {
           url: match[1],
           behaviorHints: {
@@ -374,9 +382,10 @@ async function extractVidmoly(url) {
   }
 }
 
+// Extract from Filemoon
 async function extractFilemoon(url) {
   try {
-    console.log(`[DEBUG] Extracting from Filemoon: ${url}`);
+    console.log(`[DEBUG] Filemoon: Extracting from: ${url}`);
     const response = await axios.get(url, {
       headers: { "User-Agent": USER_AGENT, Referer: url },
       timeout: 10000,
@@ -386,12 +395,12 @@ async function extractFilemoon(url) {
     const html = response.data;
 
     let sourceUrl = $('source[type="application/vnd.apple.mpegurl"]').attr('src') ||
-                    $('source[type="application/x-mpegURL"]').attr('src') ||
-                    $('source').attr('src');
+      $('source[type="application/x-mpegURL"]').attr('src') ||
+      $('source').attr('src');
 
     if (sourceUrl) {
       sourceUrl = sourceUrl.startsWith('http') ? sourceUrl : `https:${sourceUrl}`;
-      console.log(`[DEBUG] Filemoon source URL found: ${sourceUrl}`);
+      console.log(`[DEBUG] Filemoon: ✓ Source URL found from HTML`);
       return {
         url: sourceUrl,
         behaviorHints: {
@@ -410,7 +419,7 @@ async function extractFilemoon(url) {
     for (const pattern of patterns) {
       const match = html.match(pattern);
       if (match && match[1]) {
-        console.log(`[DEBUG] Filemoon video URL found: ${match[1]}`);
+        console.log(`[DEBUG] Filemoon: ✓ Video URL found from regex`);
         const finalUrl = match[1].startsWith('http') ? match[1] : `https:${match[1]}`;
         return {
           url: finalUrl,
@@ -430,16 +439,16 @@ async function extractFilemoon(url) {
   }
 }
 
+// Extract from Voe.sx
 async function extractVoe(url) {
   try {
-    console.log(`[DEBUG] Extracting from Voe.sx: ${url}`);
+    console.log(`[DEBUG] Voe.sx: Extracting from: ${url}`);
     const response = await axios.get(url, {
       headers: { "User-Agent": USER_AGENT, Referer: url },
       timeout: 10000,
     });
 
     const html = response.data;
-
     const patterns = [
       /'hls'\s*:\s*'([^']+\.m3u8[^']*)'/,
       /"hls"\s*:\s*"([^"]+\.m3u8[^"]*)"/,
@@ -450,7 +459,7 @@ async function extractVoe(url) {
     for (const pattern of patterns) {
       const match = html.match(pattern);
       if (match && match[1]) {
-        console.log(`[DEBUG] Voe.sx video URL found: ${match[1]}`);
+        console.log(`[DEBUG] Voe.sx: ✓ Video URL found`);
         return {
           url: match[1],
           behaviorHints: {
@@ -469,9 +478,10 @@ async function extractVoe(url) {
   }
 }
 
+// Extract from Savefiles
 async function extractSavefiles(url) {
   try {
-    console.log(`[DEBUG] Extracting from Savefiles: ${url}`);
+    console.log(`[DEBUG] Savefiles: Extracting from: ${url}`);
     const response = await axios.get(url, {
       headers: { "User-Agent": USER_AGENT, Referer: url },
       timeout: 10000,
@@ -484,7 +494,7 @@ async function extractSavefiles(url) {
 
     if (sourceUrl) {
       sourceUrl = sourceUrl.startsWith('http') ? sourceUrl : `https:${sourceUrl}`;
-      console.log(`[DEBUG] Savefiles source URL found: ${sourceUrl}`);
+      console.log(`[DEBUG] Savefiles: ✓ Source URL found`);
       return {
         url: sourceUrl,
         behaviorHints: {
@@ -503,7 +513,7 @@ async function extractSavefiles(url) {
     for (const pattern of patterns) {
       const match = html.match(pattern);
       if (match && match[1]) {
-        console.log(`[DEBUG] Savefiles video URL found: ${match[1]}`);
+        console.log(`[DEBUG] Savefiles: ✓ Video URL found`);
         return {
           url: match[1],
           behaviorHints: {
@@ -522,9 +532,10 @@ async function extractSavefiles(url) {
   }
 }
 
+// Generic extraction fallback
 async function extractGeneric(url) {
   try {
-    console.log(`[DEBUG] Generic extraction for: ${url}`);
+    console.log(`[DEBUG] Generic: Extracting from: ${url}`);
     const response = await axios.get(url, {
       headers: { "User-Agent": USER_AGENT, Referer: url },
       timeout: 10000,
@@ -537,7 +548,7 @@ async function extractGeneric(url) {
 
     if (sourceUrl) {
       sourceUrl = sourceUrl.startsWith('http') ? sourceUrl : `https:${sourceUrl}`;
-      console.log(`[DEBUG] Generic source URL found: ${sourceUrl}`);
+      console.log(`[DEBUG] Generic: ✓ Source URL found`);
       return {
         url: sourceUrl,
         behaviorHints: {
@@ -555,7 +566,7 @@ async function extractGeneric(url) {
     for (const pattern of patterns) {
       const match = html.match(pattern);
       if (match && match[1]) {
-        console.log(`[DEBUG] Generic video URL found: ${match[1]}`);
+        console.log(`[DEBUG] Generic: ✓ Video URL found`);
         return {
           url: match[1],
           behaviorHints: {
@@ -573,9 +584,9 @@ async function extractGeneric(url) {
   }
 }
 
+// Main extractor router
 async function extractVideoUrl(embedUrl, driver) {
-  console.log(`[DEBUG] Extracting video URL for driver: ${driver}, url: ${embedUrl}`);
-
+  console.log(`[DEBUG] extractVideoUrl: Driver=${driver}, URL=${embedUrl}`);
   let result = null;
 
   try {
@@ -592,14 +603,14 @@ async function extractVideoUrl(embedUrl, driver) {
     } else if (driver === 'savefiles') {
       result = await extractSavefiles(embedUrl);
     } else {
-      console.log(`[DEBUG] Unknown driver, skipping`);
+      console.log(`[DEBUG] Unknown driver: ${driver}, skipping`);
       return null;
     }
 
     if (result && result.url) {
       console.log(`[DEBUG] ✓ ${driver} extraction successful`);
     } else {
-      console.log(`[DEBUG] ✗ ${driver} extraction failed`);
+      console.log(`[DEBUG] ✗ ${driver} extraction returned null`);
     }
 
     return result;
@@ -609,82 +620,201 @@ async function extractVideoUrl(embedUrl, driver) {
   }
 }
 
+// NEW: Get series streams using get__watch__server API
 async function getSeriesStreams(id) {
   try {
     const encodedEpisodeUrl = id.split(":")[1];
     if (!encodedEpisodeUrl) {
       console.log(`[DEBUG] No URL found in series stream ID: ${id}`);
-      return [];
+      return { streams: [] };
     }
 
     const episodeUrl = Buffer.from(encodedEpisodeUrl, "base64").toString();
-    console.log(`[DEBUG] Fetching streams from episode URL: ${episodeUrl}`);
+    console.log(`[DEBUG] ========== STREAMS REQUEST ==========`);
+    console.log(`[DEBUG] Episode URL: ${episodeUrl}`);
 
-    const response = await axios.get(episodeUrl, { headers: { "User-Agent": USER_AGENT }, timeout: 10000 });
+    // Step 1: Get episode page to extract CSRF token
+    const response = await axios.get(episodeUrl, {
+      headers: { "User-Agent": USER_AGENT },
+      timeout: 10000
+    });
+
+    const cookies = response.headers['set-cookie']?.join('; ') || '';
     const $ = cheerio.load(response.data);
 
-    const watchBtnHref = $('a.watch__btn').attr('href');
-    console.log(`[DEBUG] watch__btn href: ${watchBtnHref}`);
+    // Extract CSRF token
+    let csrfToken = '';
+    $('script').each((i, elem) => {
+      const scriptContent = $(elem).html();
+      if (scriptContent) {
+        const match = scriptContent.match(/main__obj\s*=\s*{[^}]*'csrf__token'\s*:\s*"([a-zA-Z0-9]+)"/);
+        if (match && match[1]) {
+          csrfToken = match[1];
+          return false;
+        }
+      }
+    });
+    console.log(`[DEBUG] CSRF Token: ${csrfToken || 'NOT FOUND'}`);
 
+    // Step 2: Get watch page
+    const watchBtnHref = $('a.watch__btn').attr('href');
     if (!watchBtnHref) {
-      console.log("[DEBUG] No watch__btn button found");
-      return [];
+      console.log("[DEBUG] No watch__btn found");
+      return { streams: [] };
     }
 
     const watchUrl = watchBtnHref.startsWith('http') ? watchBtnHref : `${BASE_URL}${watchBtnHref}`;
-    console.log(`[DEBUG] Full watch URL: ${watchUrl}`);
+    console.log(`[DEBUG] Watch URL: ${watchUrl}`);
 
-    const watchResponse = await axios.get(watchUrl, { headers: { 'User-Agent': USER_AGENT }, timeout: 10000 });
+    const watchResponse = await axios.get(watchUrl, {
+      headers: {
+        "User-Agent": USER_AGENT,
+        "Cookie": cookies
+      },
+      timeout: 10000
+    });
+
     const $watch = cheerio.load(watchResponse.data);
 
-    const liElements = $watch('li[data-link]');
-    console.log(`[DEBUG] Found ${liElements.length} li elements with data-link`);
+    // Extract post_id
+    let postId = $watch('.watch__player').attr('data-id') ||
+      $watch('[data-post]').attr('data-post') ||
+      $watch('[data-id]').first().attr('data-id');
 
+    if (!postId) {
+      $watch('script').each((i, elem) => {
+        const scriptContent = $watch(elem).html();
+        if (scriptContent && !postId) {
+          const match = scriptContent.match(/post_id["\s:=]+(\d+)/i);
+          if (match && match[1]) {
+            postId = match[1];
+            return false;
+          }
+        }
+      });
+    }
+
+    console.log(`[DEBUG] Post ID: ${postId || 'NOT FOUND'}`);
+
+    if (!postId) {
+      console.log("[ERROR] Missing post_id, cannot fetch streams");
+      return { streams: [] };
+    }
+
+    // Extract qualities
+    const qualities = [];
+    $watch('ul.qualities__list li').each((i, elem) => {
+      const quality = $watch(elem).attr('data-quality');
+      if (quality) {
+        qualities.push(quality);
+      }
+    });
+
+    const testQualities = qualities.length > 0 ? qualities : ['720', '480'];
+    console.log(`[DEBUG] Qualities found: ${testQualities.join(', ')}`);
+
+    // Step 3: Call get__watch__server API for each quality and server
     const streams = [];
-    const processedSources = new Set();
+    const processedUrls = new Set();
 
-    for (let i = 0; i < liElements.length; i++) {
-      const el = liElements[i];
-      const $el = $watch(el);
-      const embedUrl = $el.attr('data-link');
-      console.log(`[DEBUG] li[${i}] embedUrl: ${embedUrl}`);
+    for (const quality of testQualities) {
+      // Only test server 0-4 (most reliable servers)
+      for (let server = 0; server <= 4; server++) {
+        try {
+          const postData = new URLSearchParams();
+          postData.append("post_id", postId);
+          postData.append("quality", quality);
+          postData.append("server", server);
+          if (csrfToken) {
+            postData.append("csrf_token", csrfToken);
+          }
 
-      if (!embedUrl || processedSources.has(embedUrl)) continue;
-      processedSources.add(embedUrl);
+          console.log(`[DEBUG] API Call: quality=${quality}, server=${server}`);
 
-      const fullUrl = embedUrl.startsWith('http') ? embedUrl : `${new URL(embedUrl, BASE_URL).href}`;
-      console.log(`[DEBUG] Full embed URL: ${fullUrl}`);
+          const apiResponse = await axios.post(
+            `${BASE_URL}/get__watch__server/`,
+            postData.toString(),
+            {
+              headers: {
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "User-Agent": USER_AGENT,
+                "X-Requested-With": "XMLHttpRequest",
+                "Referer": watchUrl,
+                "Cookie": cookies,
+                "Accept": "application/json, text/javascript, */*; q=0.01",
+                "Origin": BASE_URL,
+                "Sec-Fetch-Site": "same-origin",
+                "Sec-Fetch-Mode": "cors",
+                "Sec-Fetch-Dest": "empty",
+              },
+              timeout: 12000,
+            }
+          );
 
-      let driver = 'Unknown';
-      if (fullUrl.includes('/asd.php')) driver = 'arabseed';
-      else if (fullUrl.includes('m2.arabseed.one/play')) driver = 'arabseed-proxy';
-      else if (fullUrl.includes('vidmoly')) driver = 'vidmoly';
-      else if (fullUrl.includes('filemoon')) driver = 'filemoon';
-      else if (fullUrl.includes('voe.sx')) driver = 'voe';
-      else if (fullUrl.includes('savefiles')) driver = 'savefiles';
+          if (apiResponse.data && apiResponse.data.type === 'success' && apiResponse.data.server) {
+            const embedUrl = apiResponse.data.server;
+            console.log(`[DEBUG] API Response: ${embedUrl}`);
 
-      console.log(`[DEBUG] Determined driver: ${driver}`);
+            // Skip if already processed
+            if (processedUrls.has(embedUrl)) {
+              console.log(`[DEBUG] Skipping duplicate URL`);
+              continue;
+            }
+            processedUrls.add(embedUrl);
 
-      const extractionResult = await extractVideoUrl(fullUrl, driver);
-      console.log(`[DEBUG] Video URL extracted: ${extractionResult?.url || 'null'}`);
+            // Determine driver based on URL
+            let driver = 'Unknown';
+            let extractionUrl = embedUrl;
 
-      if (extractionResult && extractionResult.url) {
-        streams.push({
-          name: `Arabseed`,
-          title: `${driver} - Quality: 720p`,
-          url: extractionResult.url,
-          behaviorHints: extractionResult.behaviorHints || {}
-        });
-      } else {
-        console.log(`[DEBUG] No video URL extracted for embed URL: ${fullUrl}`);
+            if (embedUrl.includes('reviewrate.net')) {
+              driver = 'arabseed';
+              // URL will be converted inside extractArabseedServer
+            } else if (embedUrl.includes('m2.arabseed.one/play')) {
+              driver = 'arabseed-proxy';
+            } else if (embedUrl.includes('vidmoly')) {
+              driver = 'vidmoly';
+            } else if (embedUrl.includes('filemoon')) {
+              driver = 'filemoon';
+            } else if (embedUrl.includes('voe.sx')) {
+              driver = 'voe';
+            } else if (embedUrl.includes('savefiles')) {
+              driver = 'savefiles';
+            }
+
+            console.log(`[DEBUG] Determined driver: ${driver}`);
+
+            const extractionResult = await extractVideoUrl(extractionUrl, driver);
+
+            if (extractionResult && extractionResult.url) {
+              streams.push({
+                name: `ArabSeed`,
+                title: `${quality}p - ${driver} (Server ${server})`,
+                url: extractionResult.url,
+                behaviorHints: extractionResult.behaviorHints || {}
+              });
+              console.log(`[DEBUG] ✓ Stream added: ${quality}p - ${driver}`);
+            } else {
+              console.log(`[DEBUG] ✗ Extraction failed for ${driver}`);
+            }
+          } else {
+            console.log(`[DEBUG] API returned error or no server for quality=${quality}, server=${server}`);
+          }
+
+          // Small delay to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 300));
+
+        } catch (error) {
+          console.error(`[ERROR] API call failed for quality=${quality}, server=${server}:`, error.message);
+        }
       }
     }
 
-    console.log(`[DEBUG] Total streams found: ${streams.length}`);
-    return streams;
+    console.log(`[DEBUG] ========== Total streams found: ${streams.length} ==========`);
+    return { streams };
+
   } catch (error) {
     console.error('[STREAM ERROR]', error.message);
-    return [];
+    return { streams: [] };
   }
 }
 
