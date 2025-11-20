@@ -221,93 +221,159 @@ async function extractVoe(url) {
 }
 
 // Extract from Savefiles
+// Extract from Savefiles - Enhanced for Vercel serverless
 async function extractSavefiles(url) {
-    const { url } = req.query;
+  try {
+    console.log(`[DEBUG] Savefiles: Extracting from: ${url}`);
     
-    if (!url) {
-        return res.status(400).json({ error: 'URL parameter required' });
+    // Extract file ID from URL
+    const fileId = url.match(/\/e\/([a-zA-Z0-9]+)/)?.[1];
+    
+    if (!fileId) {
+      console.log("[DEBUG] Savefiles: Invalid URL format");
+      return null;
     }
     
-    try {
-        // Extract file ID
-        const fileId = url.match(/\/e\/([a-zA-Z0-9]+)/)?.[1];
-        
-        if (!fileId) {
-            return res.status(400).json({ error: 'Invalid savefiles.com URL' });
-        }
-        
-        // Fetch the embed page
-        const response = await fetch(url, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-        });
-        
-        const html = await response.text();
-        
-        // Try multiple extraction patterns
-        const patterns = [
-            // Pattern 1: Direct video tag
-            /<video[^>]+src=["']([^"']+)["']/i,
-            /<source[^>]+src=["']([^"']+)["']/i,
-            
-            // Pattern 2: JavaScript file variable
-            /file:\s*["']([^"']+\.mp4[^"']*)["']/i,
-            /sources?:\s*\[?\s*{[^}]*file:\s*["']([^"']+)["']/i,
-            
-            // Pattern 3: Video URL in any format
-            /video_url["']?\s*[:=]\s*["']([^"']+)["']/i,
-            /mp4["']?\s*[:=]\s*["']([^"']+)["']/i,
-            
-            // Pattern 4: Direct CDN links
-            /https?:\/\/[^"'\s]+\.mp4[^"'\s]*/i,
-        ];
-        
-        for (const pattern of patterns) {
-            const match = html.match(pattern);
-            if (match && match[1]) {
-                let videoUrl = match[1];
-                
-                // Handle relative URLs
-                if (videoUrl.startsWith('//')) {
-                    videoUrl = 'https:' + videoUrl;
-                } else if (videoUrl.startsWith('/')) {
-                    videoUrl = 'https://savefiles.com' + videoUrl;
-                }
-                
-                return res.status(200).json({
-                    success: true,
-                    videoUrl: videoUrl,
-                    method: 'pattern_match'
-                });
-            }
-        }
-        
-        // If no direct match, try to find any .mp4 URL in scripts
-        const allMp4Links = html.match(/https?:\/\/[^"'\s]+\.mp4[^"'\s]*/gi);
-        
-        if (allMp4Links && allMp4Links.length > 0) {
-            return res.status(200).json({
-                success: true,
-                videoUrl: allMp4Links[0],
-                allUrls: allMp4Links,
-                method: 'mp4_scan'
-            });
-        }
-        
-        return res.status(404).json({
-            success: false,
-            error: 'No video URL found',
-            fileId: fileId
-        });
-        
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            error: error.message
-        });
+    const response = await axios.get(url, {
+      headers: { 
+        "User-Agent": USER_AGENT, 
+        Referer: url 
+      },
+      timeout: 10000,
+    });
+
+    const $ = cheerio.load(response.data);
+    const html = response.data;
+
+    // Method 1: Check direct video/source tags in HTML
+    let sourceUrl = $("video source").attr("src") || 
+                    $("source").attr("src") || 
+                    $("video").attr("src");
+
+    if (sourceUrl) {
+      // Handle relative URLs
+      if (sourceUrl.startsWith("//")) {
+        sourceUrl = "https:" + sourceUrl;
+      } else if (sourceUrl.startsWith("/")) {
+        sourceUrl = "https://savefiles.com" + sourceUrl;
+      } else if (!sourceUrl.startsWith("http")) {
+        sourceUrl = "https://" + sourceUrl;
+      }
+      
+      console.log(`[DEBUG] Savefiles: ✓ Source URL found from HTML tags`);
+      return {
+        url: sourceUrl,
+        behaviorHints: {
+          notWebReady: false,
+          bingeGroup: "savefiles",
+        },
+      };
     }
+
+    // Method 2: Enhanced pattern matching for JavaScript variables
+    const patterns = [
+      // Direct video tag patterns
+      /<video[^>]+src=["']([^"']+)["']/i,
+      /<source[^>]+src=["']([^"']+)["']/i,
+      
+      // JavaScript file variable patterns
+      /file:\s*["']([^"']+\.mp4[^"']*)["']/i,
+      /sources?:\s*\[?\s*{[^}]*file:\s*["']([^"']+)["']/i,
+      
+      // Video URL configuration patterns
+      /video_url["']?\s*[:=]\s*["']([^"']+)["']/i,
+      /mp4["']?\s*[:=]\s*["']([^"']+)["']/i,
+      /url:\s*["']([^"']+\.mp4[^"']*)["']/i,
+      
+      // Generic sources array patterns
+      /sources?:\s*\[\s*["']([^"']+)["']/i,
+      
+      // HLS/m3u8 patterns
+      /file:\s*["']([^"']+\.m3u8[^"']*)["']/i,
+      /["']([^"']+\.m3u8[^"']*)["']/i,
+      
+      // Direct CDN links (any mp4 URL in the page)
+      /https?:\/\/[^"'\s]+\.mp4[^"'\s]*/gi,
+    ];
+
+    for (const pattern of patterns) {
+      const match = html.match(pattern);
+      if (match && match[1]) {
+        let videoUrl = match[1];
+        
+        // Handle relative URLs
+        if (videoUrl.startsWith("//")) {
+          videoUrl = "https:" + videoUrl;
+        } else if (videoUrl.startsWith("/")) {
+          videoUrl = "https://savefiles.com" + videoUrl;
+        } else if (!videoUrl.startsWith("http")) {
+          videoUrl = "https://" + videoUrl;
+        }
+        
+        console.log(`[DEBUG] Savefiles: ✓ Video URL found via pattern matching`);
+        return {
+          url: videoUrl,
+          behaviorHints: {
+            notWebReady: videoUrl.includes(".m3u8"),
+            bingeGroup: "savefiles",
+          },
+        };
+      }
+    }
+
+    // Method 3: Scan for ALL .mp4 URLs in the entire HTML
+    const allMp4Links = html.match(/https?:\/\/[^"'\s]+\.mp4[^"'\s]*/gi);
+    
+    if (allMp4Links && allMp4Links.length > 0) {
+      // Filter out small thumbnails or preview files
+      const validLinks = allMp4Links.filter(link => 
+        !link.includes("thumb") && 
+        !link.includes("preview") &&
+        !link.includes("sprite")
+      );
+      
+      if (validLinks.length > 0) {
+        console.log(`[DEBUG] Savefiles: ✓ Video URL found via mp4 scan`);
+        return {
+          url: validLinks[0],
+          behaviorHints: {
+            notWebReady: false,
+            bingeGroup: "savefiles",
+          },
+        };
+      }
+    }
+
+    // Method 4: Look for base64 encoded URLs
+    const base64Match = html.match(/atob\s*\(\s*["']([^"']+)["']\s*\)/);
+    if (base64Match) {
+      try {
+        const decoded = Buffer.from(base64Match[1], "base64").toString();
+        if (decoded.includes(".mp4") || decoded.includes(".m3u8")) {
+          console.log(`[DEBUG] Savefiles: ✓ Video URL found via base64 decode`);
+          return {
+            url: decoded,
+            behaviorHints: {
+              notWebReady: decoded.includes(".m3u8"),
+              bingeGroup: "savefiles",
+            },
+          };
+        }
+      } catch (e) {
+        console.log(`[DEBUG] Savefiles: Base64 decode failed`);
+      }
+    }
+
+    console.log(`[DEBUG] Savefiles: No video URL found after all methods`);
+    console.log(`[DEBUG] Savefiles: HTML length: ${html.length} chars`);
+    
+    return null;
+  } catch (error) {
+    console.error(`[ERROR] Savefiles extraction failed:`, error.message);
+    return null;
+  }
 }
+
 
 // Generic extraction fallback
 async function extractGeneric(url) {
