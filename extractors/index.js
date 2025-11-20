@@ -222,6 +222,7 @@ async function extractVoe(url) {
 
 // Extract from Savefiles
 // Extract from Savefiles - Enhanced for Vercel serverless
+// Extract from Savefiles - Enhanced with detailed debugging
 async function extractSavefiles(url) {
   try {
     console.log(`[DEBUG] Savefiles: Extracting from: ${url}`);
@@ -234,16 +235,42 @@ async function extractSavefiles(url) {
       return null;
     }
     
+    console.log(`[DEBUG] Savefiles: File ID: ${fileId}`);
+    
     const response = await axios.get(url, {
       headers: { 
-        "User-Agent": USER_AGENT, 
-        Referer: url 
+        "User-Agent": USER_AGENT,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Cache-Control": "max-age=0",
+        Referer: "https://savefiles.com/",
       },
-      timeout: 10000,
+      timeout: 15000,
+      maxRedirects: 5,
     });
 
-    const $ = cheerio.load(response.data);
     const html = response.data;
+    console.log(`[DEBUG] Savefiles: HTML length: ${html.length}`);
+    console.log(`[DEBUG] Savefiles: Response status: ${response.status}`);
+    
+    // Debug: Check if HTML contains video-related keywords
+    const hasVideo = html.toLowerCase().includes('video');
+    const hasSource = html.toLowerCase().includes('source');
+    const hasMp4 = html.toLowerCase().includes('.mp4');
+    const hasM3u8 = html.toLowerCase().includes('.m3u8');
+    
+    console.log(`[DEBUG] Savefiles: Contains 'video': ${hasVideo}`);
+    console.log(`[DEBUG] Savefiles: Contains 'source': ${hasSource}`);
+    console.log(`[DEBUG] Savefiles: Contains '.mp4': ${hasMp4}`);
+    console.log(`[DEBUG] Savefiles: Contains '.m3u8': ${hasM3u8}`);
+
+    const $ = cheerio.load(html);
 
     // Method 1: Check direct video/source tags in HTML
     let sourceUrl = $("video source").attr("src") || 
@@ -251,6 +278,8 @@ async function extractSavefiles(url) {
                     $("video").attr("src");
 
     if (sourceUrl) {
+      console.log(`[DEBUG] Savefiles: Raw source URL: ${sourceUrl}`);
+      
       // Handle relative URLs
       if (sourceUrl.startsWith("//")) {
         sourceUrl = "https:" + sourceUrl;
@@ -260,7 +289,7 @@ async function extractSavefiles(url) {
         sourceUrl = "https://" + sourceUrl;
       }
       
-      console.log(`[DEBUG] Savefiles: ✓ Source URL found from HTML tags`);
+      console.log(`[DEBUG] Savefiles: ✓ Source URL found from HTML tags: ${sourceUrl}`);
       return {
         url: sourceUrl,
         behaviorHints: {
@@ -270,47 +299,84 @@ async function extractSavefiles(url) {
       };
     }
 
-    // Method 2: Enhanced pattern matching for JavaScript variables
+    // Method 2: Look in script tags specifically
+    const scripts = $("script").toArray();
+    console.log(`[DEBUG] Savefiles: Found ${scripts.length} script tags`);
+    
+    for (let i = 0; i < scripts.length; i++) {
+      const scriptContent = $(scripts[i]).html() || "";
+      
+      // Log script content if it contains relevant keywords
+      if (scriptContent.includes("mp4") || scriptContent.includes("m3u8") || 
+          scriptContent.includes("video") || scriptContent.includes("source")) {
+        console.log(`[DEBUG] Savefiles: Script ${i} contains video keywords (length: ${scriptContent.length})`);
+        
+        // Try to extract video URL from this script
+        const patterns = [
+          /file["\s:]+["']([^"']+\.mp4[^"']*)["']/i,
+          /source["\s:]+["']([^"']+\.mp4[^"']*)["']/i,
+          /url["\s:]+["']([^"']+\.mp4[^"']*)["']/i,
+          /video["\s:]+["']([^"']+\.mp4[^"']*)["']/i,
+          /"(https?:\/\/[^"]+\.mp4[^"]*)"/i,
+          /'(https?:\/\/[^']+\.mp4[^']*)'/i,
+          /src["\s:=]+["']([^"']+\.mp4[^"']*)["']/i,
+        ];
+        
+        for (const pattern of patterns) {
+          const match = scriptContent.match(pattern);
+          if (match && match[1]) {
+            let videoUrl = match[1];
+            console.log(`[DEBUG] Savefiles: Found potential URL in script: ${videoUrl}`);
+            
+            // Handle relative URLs
+            if (videoUrl.startsWith("//")) {
+              videoUrl = "https:" + videoUrl;
+            } else if (videoUrl.startsWith("/")) {
+              videoUrl = "https://savefiles.com" + videoUrl;
+            }
+            
+            console.log(`[DEBUG] Savefiles: ✓ Video URL extracted from script`);
+            return {
+              url: videoUrl,
+              behaviorHints: {
+                notWebReady: false,
+                bingeGroup: "savefiles",
+              },
+            };
+          }
+        }
+      }
+    }
+
+    // Method 3: Enhanced pattern matching on entire HTML
     const patterns = [
-      // Direct video tag patterns
+      // Most specific patterns first
       /<video[^>]+src=["']([^"']+)["']/i,
       /<source[^>]+src=["']([^"']+)["']/i,
-      
-      // JavaScript file variable patterns
       /file:\s*["']([^"']+\.mp4[^"']*)["']/i,
-      /sources?:\s*\[?\s*{[^}]*file:\s*["']([^"']+)["']/i,
-      
-      // Video URL configuration patterns
-      /video_url["']?\s*[:=]\s*["']([^"']+)["']/i,
-      /mp4["']?\s*[:=]\s*["']([^"']+)["']/i,
-      /url:\s*["']([^"']+\.mp4[^"']*)["']/i,
-      
-      // Generic sources array patterns
-      /sources?:\s*\[\s*["']([^"']+)["']/i,
-      
-      // HLS/m3u8 patterns
-      /file:\s*["']([^"']+\.m3u8[^"']*)["']/i,
-      /["']([^"']+\.m3u8[^"']*)["']/i,
-      
-      // Direct CDN links (any mp4 URL in the page)
-      /https?:\/\/[^"'\s]+\.mp4[^"'\s]*/gi,
+      /sources?:\s*\[?\s*{[^}]*file:\s*["']([^"']+\.mp4[^"']*)["']/i,
+      /"video_url":\s*"([^"]+)"/i,
+      /'video_url':\s*'([^']+)'/i,
+      /data-src=["']([^"']+\.mp4[^"']*)["']/i,
+      /\bhref=["']([^"']+\.mp4[^"']*)["']/i,
     ];
 
-    for (const pattern of patterns) {
-      const match = html.match(pattern);
+    console.log(`[DEBUG] Savefiles: Trying ${patterns.length} patterns on full HTML`);
+    
+    for (let i = 0; i < patterns.length; i++) {
+      const match = html.match(patterns[i]);
       if (match && match[1]) {
         let videoUrl = match[1];
+        console.log(`[DEBUG] Savefiles: Pattern ${i} matched: ${videoUrl}`);
         
         // Handle relative URLs
         if (videoUrl.startsWith("//")) {
           videoUrl = "https:" + videoUrl;
         } else if (videoUrl.startsWith("/")) {
           videoUrl = "https://savefiles.com" + videoUrl;
-        } else if (!videoUrl.startsWith("http")) {
-          videoUrl = "https://" + videoUrl;
         }
         
-        console.log(`[DEBUG] Savefiles: ✓ Video URL found via pattern matching`);
+        console.log(`[DEBUG] Savefiles: ✓ Video URL found via pattern ${i}`);
         return {
           url: videoUrl,
           behaviorHints: {
@@ -321,19 +387,24 @@ async function extractSavefiles(url) {
       }
     }
 
-    // Method 3: Scan for ALL .mp4 URLs in the entire HTML
-    const allMp4Links = html.match(/https?:\/\/[^"'\s]+\.mp4[^"'\s]*/gi);
+    // Method 4: Scan for ALL mp4 URLs
+    const mp4Regex = /https?:\/\/[^\s"'<>]+\.mp4(?:\?[^\s"'<>]*)?/gi;
+    const allMp4Links = html.match(mp4Regex);
     
     if (allMp4Links && allMp4Links.length > 0) {
-      // Filter out small thumbnails or preview files
+      console.log(`[DEBUG] Savefiles: Found ${allMp4Links.length} mp4 URLs`);
+      allMp4Links.forEach((link, i) => {
+        console.log(`[DEBUG] Savefiles: MP4 ${i}: ${link}`);
+      });
+      
       const validLinks = allMp4Links.filter(link => 
-        !link.includes("thumb") && 
-        !link.includes("preview") &&
-        !link.includes("sprite")
+        !link.toLowerCase().includes("thumb") && 
+        !link.toLowerCase().includes("preview") &&
+        !link.toLowerCase().includes("sprite")
       );
       
       if (validLinks.length > 0) {
-        console.log(`[DEBUG] Savefiles: ✓ Video URL found via mp4 scan`);
+        console.log(`[DEBUG] Savefiles: ✓ Using first valid mp4 URL: ${validLinks[0]}`);
         return {
           url: validLinks[0],
           behaviorHints: {
@@ -344,35 +415,31 @@ async function extractSavefiles(url) {
       }
     }
 
-    // Method 4: Look for base64 encoded URLs
-    const base64Match = html.match(/atob\s*\(\s*["']([^"']+)["']\s*\)/);
-    if (base64Match) {
-      try {
-        const decoded = Buffer.from(base64Match[1], "base64").toString();
-        if (decoded.includes(".mp4") || decoded.includes(".m3u8")) {
-          console.log(`[DEBUG] Savefiles: ✓ Video URL found via base64 decode`);
-          return {
-            url: decoded,
-            behaviorHints: {
-              notWebReady: decoded.includes(".m3u8"),
-              bingeGroup: "savefiles",
-            },
-          };
-        }
-      } catch (e) {
-        console.log(`[DEBUG] Savefiles: Base64 decode failed`);
+    // Method 5: Check for iframe or embed that might contain the actual player
+    const iframe = $("iframe").attr("src");
+    if (iframe) {
+      console.log(`[DEBUG] Savefiles: Found iframe: ${iframe}`);
+      // Recursively extract from iframe
+      if (iframe.startsWith("http")) {
+        console.log(`[DEBUG] Savefiles: Attempting to extract from iframe`);
+        return await extractSavefiles(iframe);
       }
     }
 
-    console.log(`[DEBUG] Savefiles: No video URL found after all methods`);
-    console.log(`[DEBUG] Savefiles: HTML length: ${html.length} chars`);
-    
+    // Debug: Save first 1000 chars of HTML for manual inspection
+    console.log(`[DEBUG] Savefiles: HTML preview (first 1000 chars):`);
+    console.log(html.substring(0, 1000));
+
+    console.log(`[DEBUG] Savefiles: ✗ No video URL found after all methods`);
     return null;
+    
   } catch (error) {
     console.error(`[ERROR] Savefiles extraction failed:`, error.message);
+    console.error(`[ERROR] Stack:`, error.stack);
     return null;
   }
 }
+
 
 
 // Generic extraction fallback
