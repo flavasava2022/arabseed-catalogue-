@@ -474,8 +474,6 @@ async function getSeriesStreams(id) {
               embedUrl.includes("embed")
             ) {
               driver = "arabseed";
-            } else if (embedUrl.includes("m2.arabseed.one/play")) {
-              driver = "arabseed-proxy";
             } else if (embedUrl.includes("vidmoly")) {
               driver = "vidmoly";
             } else if (embedUrl.includes("filemoon")) {
