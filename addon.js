@@ -51,14 +51,14 @@ async function searchArabSeed(query, filterType) {
 
       // Determine if it's a movie or series based on URL or title
       const isSeries =
-        itemUrl.includes("/مسلسلات/") ||
-        itemUrl.includes("/مسلسل/") ||
-        title.includes("مسلسل");
+        category.includes("/مسلسلات/") ||
+        category.includes("/مسلسل/") ||
+        category.includes("مسلسل");
 
       const isMovie =
-        itemUrl.includes("/movie/") ||
-        itemUrl.includes("/فيلم/") ||
-        title.includes("فيلم") ||
+        category.includes("/افلام/") ||
+        category.includes("/فيلم/") ||
+        category.includes("فيلم") ||
         !isSeries; // Default to movie if not clearly a series
 
       // Filter based on requested type
