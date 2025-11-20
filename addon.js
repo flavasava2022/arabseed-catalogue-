@@ -41,6 +41,7 @@ async function searchArabSeed(query, filterType) {
       const $elem = $(elem);
       const itemUrl = $elem.attr("href");
       const title = $elem.find(".post__info h3").text().trim();
+            const category = $elem.find(".post__category").text();
       const posterUrl =
         $elem.find(".post__image img").attr("data-src") ||
         $elem.find(".post__image img").attr("src");
@@ -50,7 +51,7 @@ async function searchArabSeed(query, filterType) {
 
       // Determine if it's a movie or series based on URL or title
       const isSeries =
-        itemUrl.includes("/الحلقة/") ||
+        itemUrl.includes("/مسلسلات/") ||
         itemUrl.includes("/مسلسل/") ||
         title.includes("مسلسل");
 
