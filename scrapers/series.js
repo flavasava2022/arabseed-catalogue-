@@ -1,7 +1,7 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
 const Buffer = require("buffer").Buffer;
-const { extractVideoUrl } = require("./extractors");
+const { extractVideoUrl } = require("../extractors");
 
 const BASE_URL = "https://a.asd.homes";
 const SERIES_CATEGORY = "/category/arabic-series-6/";
