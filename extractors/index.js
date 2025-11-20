@@ -3,7 +3,8 @@ const axios = require("axios");
 const cheerio = require("cheerio");
 
 const BASE_URL = "https://a.asd.homes";
-const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
+const USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 
 // Extract from Arabseed server using reviewrate.net embed
 async function extractArabseedServer(embedCode) {
@@ -84,7 +85,8 @@ async function extractArabseedProxy(url) {
 // Extract from Vidmoly
 async function extractVidmoly(url) {
   const axios = require("axios");
-  const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
+  const USER_AGENT =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 
   try {
     console.log(`[DEBUG] Vidmoly: Extracting from: ${url}`);
@@ -98,7 +100,9 @@ async function extractVidmoly(url) {
     // 1. JWPlayer sources/file=m3u8 regex
     const m3u8Match =
       html.match(/file\s*:\s*["']([^"']+\.m3u8[^"']*)["']/i) ||
-      html.match(/sources\s*:\s*\[\s*\{\s*file\s*:\s*["']([^"']+\.m3u8[^"']*)["']/i);
+      html.match(
+        /sources\s*:\s*\[\s*\{\s*file\s*:\s*["']([^"']+\.m3u8[^"']*)["']/i
+      );
 
     if (m3u8Match && m3u8Match[1]) {
       console.log(`[DEBUG] Vidmoly: ✓ found m3u8: ${m3u8Match[1]}`);
@@ -107,7 +111,7 @@ async function extractVidmoly(url) {
         behaviorHints: {
           notWebReady: true,
           bingeGroup: "vidmoly",
-        }
+        },
       };
     }
 
@@ -120,7 +124,7 @@ async function extractVidmoly(url) {
         behaviorHints: {
           notWebReady: true,
           bingeGroup: "vidmoly",
-        }
+        },
       };
     }
 
@@ -131,7 +135,6 @@ async function extractVidmoly(url) {
     return null;
   }
 }
-
 
 // Extract from Filemoon
 async function extractFilemoon(url) {
@@ -238,30 +241,33 @@ async function extractVoe(url) {
 async function extractSavefiles(url) {
   try {
     console.log(`[DEBUG] Savefiles: Extracting from: ${url}`);
-    
+
     // Extract file ID from URL
     const fileIdMatch = url.match(/\/e\/([a-zA-Z0-9]+)/);
     if (!fileIdMatch) {
       console.log("[DEBUG] Savefiles: Invalid URL format");
       return null;
     }
-    
+
     const fileId = fileIdMatch[1];
     console.log(`[DEBUG] Savefiles: File ID: ${fileId}`);
-    
+
     // Step 1: Get the embed page to extract any tokens or session data
     const embedResponse = await axios.get(url, {
-      headers: { 
+      headers: {
         "User-Agent": USER_AGENT,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        Accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
-        "Referer": "https://savefiles.com/",
+        Referer: "https://savefiles.com/",
       },
       timeout: 15000,
     });
 
     const embedHtml = embedResponse.data;
-    console.log(`[DEBUG] Savefiles: Embed page loaded (${embedHtml.length} chars)`);
+    console.log(
+      `[DEBUG] Savefiles: Embed page loaded (${embedHtml.length} chars)`
+    );
 
     // Step 2: Try direct download URL patterns that savefiles.com might use
     const possibleUrls = [
@@ -275,31 +281,40 @@ async function extractSavefiles(url) {
       `https://storage.savefiles.com/${fileId}`,
     ];
 
-    console.log(`[DEBUG] Savefiles: Trying ${possibleUrls.length} potential direct URLs`);
+    console.log(
+      `[DEBUG] Savefiles: Trying ${possibleUrls.length} potential direct URLs`
+    );
 
     // Try each URL with HEAD request to check if it exists
     for (const testUrl of possibleUrls) {
       try {
         console.log(`[DEBUG] Savefiles: Testing URL: ${testUrl}`);
-        
+
         const headResponse = await axios.head(testUrl, {
           headers: {
             "User-Agent": USER_AGENT,
-            "Referer": url,
+            Referer: url,
           },
           timeout: 5000,
           maxRedirects: 5,
           validateStatus: (status) => status < 500, // Accept redirects
         });
 
-        console.log(`[DEBUG] Savefiles: HEAD response: ${headResponse.status} for ${testUrl}`);
-        console.log(`[DEBUG] Savefiles: Content-Type: ${headResponse.headers['content-type']}`);
-        
+        console.log(
+          `[DEBUG] Savefiles: HEAD response: ${headResponse.status} for ${testUrl}`
+        );
+        console.log(
+          `[DEBUG] Savefiles: Content-Type: ${headResponse.headers["content-type"]}`
+        );
+
         // Check if it's a video file
-        const contentType = headResponse.headers['content-type'] || '';
-        if (contentType.includes('video') || contentType.includes('octet-stream') || 
-            contentType.includes('mp4') || headResponse.status === 200) {
-          
+        const contentType = headResponse.headers["content-type"] || "";
+        if (
+          contentType.includes("video") ||
+          contentType.includes("octet-stream") ||
+          contentType.includes("mp4") ||
+          headResponse.status === 200
+        ) {
           console.log(`[DEBUG] Savefiles: ✓ Found valid video URL: ${testUrl}`);
           return {
             url: testUrl,
@@ -310,7 +325,9 @@ async function extractSavefiles(url) {
           };
         }
       } catch (headError) {
-        console.log(`[DEBUG] Savefiles: URL test failed: ${testUrl} - ${headError.message}`);
+        console.log(
+          `[DEBUG] Savefiles: URL test failed: ${testUrl} - ${headError.message}`
+        );
       }
     }
 
@@ -326,36 +343,41 @@ async function extractSavefiles(url) {
       const match = embedHtml.match(pattern);
       if (match && match[1]) {
         let apiUrl = match[1];
-        
+
         // Construct full API URL
         if (apiUrl.startsWith("/")) {
           apiUrl = "https://savefiles.com" + apiUrl;
         }
-        
+
         // Add file ID to API URL
         if (!apiUrl.includes(fileId)) {
           apiUrl = `${apiUrl}/${fileId}`;
         }
-        
+
         console.log(`[DEBUG] Savefiles: Found potential API URL: ${apiUrl}`);
-        
+
         try {
           const apiResponse = await axios.get(apiUrl, {
             headers: {
               "User-Agent": USER_AGENT,
-              "Referer": url,
+              Referer: url,
             },
             timeout: 10000,
           });
-          
+
           // Try to extract video URL from API response
-          const apiData = typeof apiResponse.data === 'string' 
-            ? apiResponse.data 
-            : JSON.stringify(apiResponse.data);
-          
-          const urlMatch = apiData.match(/https?:\/\/[^\s"'<>]+\.mp4(?:\?[^\s"'<>]*)?/i);
+          const apiData =
+            typeof apiResponse.data === "string"
+              ? apiResponse.data
+              : JSON.stringify(apiResponse.data);
+
+          const urlMatch = apiData.match(
+            /https?:\/\/[^\s"'<>]+\.mp4(?:\?[^\s"'<>]*)?/i
+          );
           if (urlMatch) {
-            console.log(`[DEBUG] Savefiles: ✓ Video URL from API: ${urlMatch[0]}`);
+            console.log(
+              `[DEBUG] Savefiles: ✓ Video URL from API: ${urlMatch[0]}`
+            );
             return {
               url: urlMatch[0],
               behaviorHints: {
@@ -365,14 +387,18 @@ async function extractSavefiles(url) {
             };
           }
         } catch (apiError) {
-          console.log(`[DEBUG] Savefiles: API request failed: ${apiError.message}`);
+          console.log(
+            `[DEBUG] Savefiles: API request failed: ${apiError.message}`
+          );
         }
       }
     }
 
     // Step 4: Last resort - return the embed URL itself for external player handling
-    console.log(`[DEBUG] Savefiles: Could not extract direct URL, returning embed URL`);
-    
+    console.log(
+      `[DEBUG] Savefiles: Could not extract direct URL, returning embed URL`
+    );
+
     // Return the embed URL with a flag that it needs external handling
     return {
       url: url, // Return original embed URL
@@ -381,17 +407,13 @@ async function extractSavefiles(url) {
         notWebReady: true,
         bingeGroup: "savefiles",
       },
-      note: "Direct extraction failed - requires browser playback"
+      note: "Direct extraction failed - requires browser playback",
     };
-
   } catch (error) {
     console.error(`[ERROR] Savefiles extraction failed:`, error.message);
     return null;
   }
 }
-
-
-
 
 // Generic extraction fallback
 async function extractGeneric(url) {
@@ -455,8 +477,6 @@ async function extractVideoUrl(embedUrl, driver) {
   try {
     if (driver === "arabseed") {
       result = await extractArabseedServer(embedUrl);
-    } else if (driver === "arabseed-proxy") {
-      result = await extractArabseedProxy(embedUrl);
     } else if (driver === "vidmoly") {
       result = await extractVidmoly(embedUrl);
     } else if (driver === "filemoon") {

@@ -469,16 +469,16 @@ async function getSeriesStreams(id) {
             let driver = "Unknown";
             let extractionUrl = embedUrl;
 
-            if (embedUrl.includes("reviewrate.net")) {
-              driver = "arabseed";
+            if (embedUrl.includes("savefiles")) {
+              driver = "savefiles";
             } else if (embedUrl.includes("vidmoly")) {
               driver = "vidmoly";
             } else if (embedUrl.includes("filemoon")) {
               driver = "filemoon";
             } else if (embedUrl.includes("voe.sx")) {
               driver = "voe";
-            } else if (embedUrl.includes("savefiles")) {
-              driver = "savefiles";
+            } else if (embedUrl.includes("reviewrate.net")) {
+              driver = "arabseed";
             }
 
             console.log(`[DEBUG] Determined driver: ${driver}`);
