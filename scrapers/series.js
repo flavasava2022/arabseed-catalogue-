@@ -259,27 +259,27 @@ async function extractArabseedServer(embedCode) {
     console.log(`[DEBUG] ArabseedServer: Original URL: ${embedCode}`);
     console.log(`[DEBUG] ArabseedServer: Converted to Gamehub URL: ${gamehubUrl}`);
 
-    const response = await axios.get(gamehubUrl, {
-      headers: { "User-Agent": USER_AGENT, Referer: BASE_URL },
-      timeout: 10000,
-    });
+    // const response = await axios.get(gamehubUrl, {
+    //   headers: { "User-Agent": USER_AGENT, Referer: BASE_URL },
+    //   timeout: 10000,
+    // });
 
-    const $ = cheerio.load(response.data);
-    const iframeSrc = $('iframe').attr('src');
-    console.log(`[DEBUG] ArabseedServer: Found iframe src: ${iframeSrc}`);
+    // const $ = cheerio.load(response.data);
+    // const iframeSrc = $('iframe').attr('src');
+    // console.log(`[DEBUG] ArabseedServer: Found iframe src: ${iframeSrc}`);
 
-    if (!iframeSrc) {
-      console.log("[DEBUG] ArabseedServer: No iframe found in gamehub response");
-      return null;
-    }
+    // if (!iframeSrc) {
+    //   console.log("[DEBUG] ArabseedServer: No iframe found in gamehub response");
+    //   return null;
+    // }
 
-    const fullIframeUrl = iframeSrc.startsWith('http') ? iframeSrc : `https:${iframeSrc}`;
-    console.log(`[DEBUG] ArabseedServer: Full iframe URL: ${fullIframeUrl}`);
+    // const fullIframeUrl = iframeSrc.startsWith('http') ? iframeSrc : `https:${iframeSrc}`;
+    // console.log(`[DEBUG] ArabseedServer: Full iframe URL: ${fullIframeUrl}`);
 
-    const playerResponse = await axios.get(fullIframeUrl, {
+    const playerResponse = await axios.get(embedCode, {
       headers: {
         "User-Agent": USER_AGENT,
-        Referer: gamehubUrl
+        Referer: BASE_URL
       },
       timeout: 10000,
     });
