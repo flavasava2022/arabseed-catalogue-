@@ -254,7 +254,7 @@ async function getMovieStreams(id) {
             let driver = "Unknown";
             let extractionUrl = embedUrl;
 
-            if (embedUrl.includes("reviewrate.net")) {
+            if (embedUrl.includes("reviewrate.net")||embedUrl.includes("embed")) {
               driver = "arabseed";
             } else if (embedUrl.includes("m2.arabseed.one/play")) {
               driver = "arabseed-proxy";

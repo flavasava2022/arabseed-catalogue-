@@ -4,10 +4,11 @@ const Buffer = require("buffer").Buffer;
 const { extractVideoUrl } = require("../extractors");
 
 const BASE_URL = "https://a.asd.homes";
-const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
+const USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 
 // Fetch series list
-async function getSeries(skip = 0,SERIES_CATEGORY) {
+async function getSeries(skip = 0, SERIES_CATEGORY) {
   try {
     const page = skip > 0 ? Math.floor(skip / 20) + 1 : 1;
     const url =
@@ -466,7 +467,10 @@ async function getSeriesStreams(id) {
             let driver = "Unknown";
             let extractionUrl = embedUrl;
 
-            if (embedUrl.includes("reviewrate.net")) {
+            if (
+              embedUrl.includes("reviewrate.net") ||
+              embedUrl.includes("embed")
+            ) {
               driver = "arabseed";
             } else if (embedUrl.includes("m2.arabseed.one/play")) {
               driver = "arabseed-proxy";
@@ -518,10 +522,10 @@ async function getSeriesStreams(id) {
     console.log(
       `[DEBUG] ========== Total streams found: ${streams.length} ==========`
     );
-    return  streams ;
+    return streams;
   } catch (error) {
     console.error("[STREAM ERROR]", error.message);
-    return  [] ;
+    return [];
   }
 }
 
