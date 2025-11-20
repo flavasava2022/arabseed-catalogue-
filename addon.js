@@ -16,7 +16,10 @@ const catalogHandler = async ({ type, id, extra }) => {
     const metas = await getSeries(skip);
     return { metas };
   }
-  
+    if (type === 'series' && id === 'arabseed-turkish-series') {
+    const metas = await getSeries(skip);
+    return { metas };
+  }
   return { metas: [] };
 };
 
