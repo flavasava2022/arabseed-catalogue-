@@ -2,6 +2,8 @@ const { addonBuilder } = require("stremio-addon-sdk");
 const axios = require("axios");
 const cheerio = require("cheerio");
 const manifest = require("./manifest");
+const Buffer = require("buffer").Buffer;
+
 const {
   getMovies,
   getMovieMeta,
