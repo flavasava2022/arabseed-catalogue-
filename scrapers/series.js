@@ -4,11 +4,10 @@ const Buffer = require("buffer").Buffer;
 const { extractVideoUrl } = require("../extractors");
 
 const BASE_URL = "https://a.asd.homes";
-const SERIES_CATEGORY = "/category/arabic-series-6/";
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 
 // Fetch series list
-async function getSeries(skip = 0) {
+async function getSeries(skip = 0,SERIES_CATEGORY) {
   try {
     const page = skip > 0 ? Math.floor(skip / 20) + 1 : 1;
     const url =
@@ -519,10 +518,10 @@ async function getSeriesStreams(id) {
     console.log(
       `[DEBUG] ========== Total streams found: ${streams.length} ==========`
     );
-    return { streams };
+    return  streams ;
   } catch (error) {
     console.error("[STREAM ERROR]", error.message);
-    return { streams: [] };
+    return  [] ;
   }
 }
 
