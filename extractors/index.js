@@ -220,225 +220,162 @@ async function extractVoe(url) {
   }
 }
 
-// Extract from Savefiles
-// Extract from Savefiles - Enhanced for Vercel serverless
-// Extract from Savefiles - Enhanced with detailed debugging
+// Extract from Savefiles - Two-step extraction for dynamic loading
 async function extractSavefiles(url) {
   try {
     console.log(`[DEBUG] Savefiles: Extracting from: ${url}`);
     
     // Extract file ID from URL
-    const fileId = url.match(/\/e\/([a-zA-Z0-9]+)/)?.[1];
-    
-    if (!fileId) {
+    const fileIdMatch = url.match(/\/e\/([a-zA-Z0-9]+)/);
+    if (!fileIdMatch) {
       console.log("[DEBUG] Savefiles: Invalid URL format");
       return null;
     }
     
+    const fileId = fileIdMatch[1];
     console.log(`[DEBUG] Savefiles: File ID: ${fileId}`);
     
-    const response = await axios.get(url, {
+    // Step 1: Get the embed page to extract any tokens or session data
+    const embedResponse = await axios.get(url, {
       headers: { 
         "User-Agent": USER_AGENT,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "Cache-Control": "max-age=0",
-        Referer: "https://savefiles.com/",
+        "Referer": "https://savefiles.com/",
       },
       timeout: 15000,
-      maxRedirects: 5,
     });
 
-    const html = response.data;
-    console.log(`[DEBUG] Savefiles: HTML length: ${html.length}`);
-    console.log(`[DEBUG] Savefiles: Response status: ${response.status}`);
-    
-    // Debug: Check if HTML contains video-related keywords
-    const hasVideo = html.toLowerCase().includes('video');
-    const hasSource = html.toLowerCase().includes('source');
-    const hasMp4 = html.toLowerCase().includes('.mp4');
-    const hasM3u8 = html.toLowerCase().includes('.m3u8');
-    
-    console.log(`[DEBUG] Savefiles: Contains 'video': ${hasVideo}`);
-    console.log(`[DEBUG] Savefiles: Contains 'source': ${hasSource}`);
-    console.log(`[DEBUG] Savefiles: Contains '.mp4': ${hasMp4}`);
-    console.log(`[DEBUG] Savefiles: Contains '.m3u8': ${hasM3u8}`);
+    const embedHtml = embedResponse.data;
+    console.log(`[DEBUG] Savefiles: Embed page loaded (${embedHtml.length} chars)`);
 
-    const $ = cheerio.load(html);
+    // Step 2: Try direct download URL patterns that savefiles.com might use
+    const possibleUrls = [
+      `https://savefiles.com/d/${fileId}`,
+      `https://savefiles.com/download/${fileId}`,
+      `https://savefiles.com/file/${fileId}`,
+      `https://cdn.savefiles.com/${fileId}`,
+      `https://cdn.savefiles.com/file/${fileId}`,
+      `https://s1.savefiles.com/${fileId}`,
+      `https://s2.savefiles.com/${fileId}`,
+      `https://storage.savefiles.com/${fileId}`,
+    ];
 
-    // Method 1: Check direct video/source tags in HTML
-    let sourceUrl = $("video source").attr("src") || 
-                    $("source").attr("src") || 
-                    $("video").attr("src");
+    console.log(`[DEBUG] Savefiles: Trying ${possibleUrls.length} potential direct URLs`);
 
-    if (sourceUrl) {
-      console.log(`[DEBUG] Savefiles: Raw source URL: ${sourceUrl}`);
-      
-      // Handle relative URLs
-      if (sourceUrl.startsWith("//")) {
-        sourceUrl = "https:" + sourceUrl;
-      } else if (sourceUrl.startsWith("/")) {
-        sourceUrl = "https://savefiles.com" + sourceUrl;
-      } else if (!sourceUrl.startsWith("http")) {
-        sourceUrl = "https://" + sourceUrl;
+    // Try each URL with HEAD request to check if it exists
+    for (const testUrl of possibleUrls) {
+      try {
+        console.log(`[DEBUG] Savefiles: Testing URL: ${testUrl}`);
+        
+        const headResponse = await axios.head(testUrl, {
+          headers: {
+            "User-Agent": USER_AGENT,
+            "Referer": url,
+          },
+          timeout: 5000,
+          maxRedirects: 5,
+          validateStatus: (status) => status < 500, // Accept redirects
+        });
+
+        console.log(`[DEBUG] Savefiles: HEAD response: ${headResponse.status} for ${testUrl}`);
+        console.log(`[DEBUG] Savefiles: Content-Type: ${headResponse.headers['content-type']}`);
+        
+        // Check if it's a video file
+        const contentType = headResponse.headers['content-type'] || '';
+        if (contentType.includes('video') || contentType.includes('octet-stream') || 
+            contentType.includes('mp4') || headResponse.status === 200) {
+          
+          console.log(`[DEBUG] Savefiles: ✓ Found valid video URL: ${testUrl}`);
+          return {
+            url: testUrl,
+            behaviorHints: {
+              notWebReady: false,
+              bingeGroup: "savefiles",
+            },
+          };
+        }
+      } catch (headError) {
+        console.log(`[DEBUG] Savefiles: URL test failed: ${testUrl} - ${headError.message}`);
       }
-      
-      console.log(`[DEBUG] Savefiles: ✓ Source URL found from HTML tags: ${sourceUrl}`);
-      return {
-        url: sourceUrl,
-        behaviorHints: {
-          notWebReady: false,
-          bingeGroup: "savefiles",
-        },
-      };
     }
 
-    // Method 2: Look in script tags specifically
-    const scripts = $("script").toArray();
-    console.log(`[DEBUG] Savefiles: Found ${scripts.length} script tags`);
-    
-    for (let i = 0; i < scripts.length; i++) {
-      const scriptContent = $(scripts[i]).html() || "";
-      
-      // Log script content if it contains relevant keywords
-      if (scriptContent.includes("mp4") || scriptContent.includes("m3u8") || 
-          scriptContent.includes("video") || scriptContent.includes("source")) {
-        console.log(`[DEBUG] Savefiles: Script ${i} contains video keywords (length: ${scriptContent.length})`);
+    // Step 3: Look for API endpoint in the embed page JavaScript
+    const apiPatterns = [
+      /api["\s:]+["']([^"']+)["']/i,
+      /endpoint["\s:]+["']([^"']+)["']/i,
+      /getFile["\s(]+["']([^"']+)["']/i,
+      /download["\s:]+["']([^"']+)["']/i,
+    ];
+
+    for (const pattern of apiPatterns) {
+      const match = embedHtml.match(pattern);
+      if (match && match[1]) {
+        let apiUrl = match[1];
         
-        // Try to extract video URL from this script
-        const patterns = [
-          /file["\s:]+["']([^"']+\.mp4[^"']*)["']/i,
-          /source["\s:]+["']([^"']+\.mp4[^"']*)["']/i,
-          /url["\s:]+["']([^"']+\.mp4[^"']*)["']/i,
-          /video["\s:]+["']([^"']+\.mp4[^"']*)["']/i,
-          /"(https?:\/\/[^"]+\.mp4[^"]*)"/i,
-          /'(https?:\/\/[^']+\.mp4[^']*)'/i,
-          /src["\s:=]+["']([^"']+\.mp4[^"']*)["']/i,
-        ];
+        // Construct full API URL
+        if (apiUrl.startsWith("/")) {
+          apiUrl = "https://savefiles.com" + apiUrl;
+        }
         
-        for (const pattern of patterns) {
-          const match = scriptContent.match(pattern);
-          if (match && match[1]) {
-            let videoUrl = match[1];
-            console.log(`[DEBUG] Savefiles: Found potential URL in script: ${videoUrl}`);
-            
-            // Handle relative URLs
-            if (videoUrl.startsWith("//")) {
-              videoUrl = "https:" + videoUrl;
-            } else if (videoUrl.startsWith("/")) {
-              videoUrl = "https://savefiles.com" + videoUrl;
-            }
-            
-            console.log(`[DEBUG] Savefiles: ✓ Video URL extracted from script`);
+        // Add file ID to API URL
+        if (!apiUrl.includes(fileId)) {
+          apiUrl = `${apiUrl}/${fileId}`;
+        }
+        
+        console.log(`[DEBUG] Savefiles: Found potential API URL: ${apiUrl}`);
+        
+        try {
+          const apiResponse = await axios.get(apiUrl, {
+            headers: {
+              "User-Agent": USER_AGENT,
+              "Referer": url,
+            },
+            timeout: 10000,
+          });
+          
+          // Try to extract video URL from API response
+          const apiData = typeof apiResponse.data === 'string' 
+            ? apiResponse.data 
+            : JSON.stringify(apiResponse.data);
+          
+          const urlMatch = apiData.match(/https?:\/\/[^\s"'<>]+\.mp4(?:\?[^\s"'<>]*)?/i);
+          if (urlMatch) {
+            console.log(`[DEBUG] Savefiles: ✓ Video URL from API: ${urlMatch[0]}`);
             return {
-              url: videoUrl,
+              url: urlMatch[0],
               behaviorHints: {
                 notWebReady: false,
                 bingeGroup: "savefiles",
               },
             };
           }
+        } catch (apiError) {
+          console.log(`[DEBUG] Savefiles: API request failed: ${apiError.message}`);
         }
       }
     }
 
-    // Method 3: Enhanced pattern matching on entire HTML
-    const patterns = [
-      // Most specific patterns first
-      /<video[^>]+src=["']([^"']+)["']/i,
-      /<source[^>]+src=["']([^"']+)["']/i,
-      /file:\s*["']([^"']+\.mp4[^"']*)["']/i,
-      /sources?:\s*\[?\s*{[^}]*file:\s*["']([^"']+\.mp4[^"']*)["']/i,
-      /"video_url":\s*"([^"]+)"/i,
-      /'video_url':\s*'([^']+)'/i,
-      /data-src=["']([^"']+\.mp4[^"']*)["']/i,
-      /\bhref=["']([^"']+\.mp4[^"']*)["']/i,
-    ];
-
-    console.log(`[DEBUG] Savefiles: Trying ${patterns.length} patterns on full HTML`);
+    // Step 4: Last resort - return the embed URL itself for external player handling
+    console.log(`[DEBUG] Savefiles: Could not extract direct URL, returning embed URL`);
     
-    for (let i = 0; i < patterns.length; i++) {
-      const match = html.match(patterns[i]);
-      if (match && match[1]) {
-        let videoUrl = match[1];
-        console.log(`[DEBUG] Savefiles: Pattern ${i} matched: ${videoUrl}`);
-        
-        // Handle relative URLs
-        if (videoUrl.startsWith("//")) {
-          videoUrl = "https:" + videoUrl;
-        } else if (videoUrl.startsWith("/")) {
-          videoUrl = "https://savefiles.com" + videoUrl;
-        }
-        
-        console.log(`[DEBUG] Savefiles: ✓ Video URL found via pattern ${i}`);
-        return {
-          url: videoUrl,
-          behaviorHints: {
-            notWebReady: videoUrl.includes(".m3u8"),
-            bingeGroup: "savefiles",
-          },
-        };
-      }
-    }
+    // Return the embed URL with a flag that it needs external handling
+    return {
+      url: url, // Return original embed URL
+      externalUrl: url, // Mark for external player
+      behaviorHints: {
+        notWebReady: true,
+        bingeGroup: "savefiles",
+      },
+      note: "Direct extraction failed - requires browser playback"
+    };
 
-    // Method 4: Scan for ALL mp4 URLs
-    const mp4Regex = /https?:\/\/[^\s"'<>]+\.mp4(?:\?[^\s"'<>]*)?/gi;
-    const allMp4Links = html.match(mp4Regex);
-    
-    if (allMp4Links && allMp4Links.length > 0) {
-      console.log(`[DEBUG] Savefiles: Found ${allMp4Links.length} mp4 URLs`);
-      allMp4Links.forEach((link, i) => {
-        console.log(`[DEBUG] Savefiles: MP4 ${i}: ${link}`);
-      });
-      
-      const validLinks = allMp4Links.filter(link => 
-        !link.toLowerCase().includes("thumb") && 
-        !link.toLowerCase().includes("preview") &&
-        !link.toLowerCase().includes("sprite")
-      );
-      
-      if (validLinks.length > 0) {
-        console.log(`[DEBUG] Savefiles: ✓ Using first valid mp4 URL: ${validLinks[0]}`);
-        return {
-          url: validLinks[0],
-          behaviorHints: {
-            notWebReady: false,
-            bingeGroup: "savefiles",
-          },
-        };
-      }
-    }
-
-    // Method 5: Check for iframe or embed that might contain the actual player
-    const iframe = $("iframe").attr("src");
-    if (iframe) {
-      console.log(`[DEBUG] Savefiles: Found iframe: ${iframe}`);
-      // Recursively extract from iframe
-      if (iframe.startsWith("http")) {
-        console.log(`[DEBUG] Savefiles: Attempting to extract from iframe`);
-        return await extractSavefiles(iframe);
-      }
-    }
-
-    // Debug: Save first 1000 chars of HTML for manual inspection
-    console.log(`[DEBUG] Savefiles: HTML preview (first 1000 chars):`);
-    console.log(html.substring(0, 1000));
-
-    console.log(`[DEBUG] Savefiles: ✗ No video URL found after all methods`);
-    return null;
-    
   } catch (error) {
     console.error(`[ERROR] Savefiles extraction failed:`, error.message);
-    console.error(`[ERROR] Stack:`, error.stack);
     return null;
   }
 }
+
 
 
 
