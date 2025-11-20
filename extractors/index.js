@@ -222,58 +222,18 @@ async function extractVoe(url) {
 
 // Extract from Savefiles
 async function extractSavefiles(url) {
-  try {
-    console.log(`[DEBUG] Savefiles: Extracting from: ${url}`);
-    const response = await axios.get(url, {
-      headers: { "User-Agent": USER_AGENT, Referer: url },
-      timeout: 10000,
-    });
-
-    const $ = cheerio.load(response.data);
-    const html = response.data;
-
-    let sourceUrl = $("video source").attr("src") || $("source").attr("src");
-
-    if (sourceUrl) {
-      sourceUrl = sourceUrl.startsWith("http")
-        ? sourceUrl
-        : `https:${sourceUrl}`;
-      console.log(`[DEBUG] Savefiles: ✓ Source URL found`);
-      return {
-        url: sourceUrl,
-        behaviorHints: {
-          notWebReady: true,
-          bingeGroup: "savefiles",
-        },
-      };
-    }
-
-    const patterns = [
-      /file\s*:\s*"([^"]+\.(m3u8|mp4)[^"]*)"/,
-      /"file"\s*:\s*"([^"]+\.(m3u8|mp4)[^"]*)"/,
-      /sources\s*:\s*\[\s*"([^"]+)"/,
-    ];
-
-    for (const pattern of patterns) {
-      const match = html.match(pattern);
-      if (match && match[1]) {
-        console.log(`[DEBUG] Savefiles: ✓ Video URL found`);
-        return {
-          url: match[1],
-          behaviorHints: {
-            notWebReady: true,
-            bingeGroup: "savefiles",
-          },
-        };
-      }
-    }
-
-    console.log(`[DEBUG] Savefiles: No video URL found`);
-    return null;
-  } catch (error) {
-    console.error(`[ERROR] Savefiles extraction failed:`, error.message);
-    return null;
-  }
+    return {
+        streams: [
+            {
+                // Return embed URL - Stremio will handle extraction
+                url: url,
+                title: "SaveFiles",
+                
+                // Or use external player
+                externalUrl: url
+            }
+        ]
+    };
 }
 
 // Generic extraction fallback
