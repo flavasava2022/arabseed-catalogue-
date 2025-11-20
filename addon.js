@@ -14,7 +14,9 @@ const {
   getSeriesMeta,
   getSeriesStreams,
 } = require("./scrapers/series");
-
+const BASE_URL = "https://a.asd.homes";
+const USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 const builder = new addonBuilder(manifest);
 // Shared search function that returns all results
 async function searchArabSeed(query, filterType) {
@@ -22,7 +24,7 @@ async function searchArabSeed(query, filterType) {
     console.log(`[DEBUG] Searching for: "${query}", filter: ${filterType}`);
 
     // Search without type filter to get all results
-    const searchUrl = `https://a.asd.homes/find/?word=${encodeURIComponent(
+    const searchUrl = `${BASE_URL}/find/?word=${encodeURIComponent(
       query
     )}&type=`;
     console.log(`[DEBUG] Search URL: ${searchUrl}`);
