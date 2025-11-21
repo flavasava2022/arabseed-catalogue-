@@ -265,7 +265,8 @@ async function getSeriesMeta(id) {
             season: 1,
             episode: episodeNum,
             released: new Date().toISOString(),
-            poster: posterUrl || undefined,
+            thumbnail: posterUrl || undefined,
+
           });
         });
       }
