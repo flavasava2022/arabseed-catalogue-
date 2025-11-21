@@ -264,9 +264,8 @@ async function getSeriesMeta(id) {
             title: `الحلقة ${episodeNum}`,
             season: 1,
             episode: episodeNum,
-            released: new Date().toISOString(),
-            thumbnail: posterUrl || undefined,
 
+            thumbnail: posterUrl || undefined,
           });
         });
       }
