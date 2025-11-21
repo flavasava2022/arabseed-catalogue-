@@ -79,7 +79,7 @@ async function getMovieMeta(id) {
     const $ = cheerio.load(response.data);
 
     const title =
-      $(".post__title h1").text().trim() || $(".post__name").text().trim();
+      $(".post__name").text().trim();
     const posterUrl =
       $(".poster__single img").attr("src") ||
       $(".poster__single img").attr("data-src");

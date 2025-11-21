@@ -196,7 +196,7 @@ async function getSeriesMeta(id) {
       `[DEBUG] Extracted CSRF token from main__obj: ${csrfToken || "NOT FOUND"}`
     );
 
-    const title = $(".post__title h1").text().trim();
+    const title = $(".post__name").text().trim();
     const posterUrl =
       $(".poster__single img").attr("src") ||
       $(".poster__single img").attr("data-src");
@@ -265,6 +265,7 @@ async function getSeriesMeta(id) {
             season: 1,
             episode: episodeNum,
             released: new Date().toISOString(),
+            poster: posterUrl || undefined,
           });
         });
       }
