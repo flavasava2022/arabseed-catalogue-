@@ -11,17 +11,40 @@ async function extractArabseedServer(embedCode) {
   try {
     console.log(`[DEBUG] ArabseedServer: Original URL: ${embedCode}`);
 
-    const playerResponse = await axios.get(embedCode, {
-      headers: {
-        "User-Agent": USER_AGENT,
-        Referer: BASE_URL,
-      },
-      timeout: 10000,
-    });
+    // Helper function to extract video from a URL
+    const tryExtractVideo = async (url) => {
+      const playerResponse = await axios.get(url, {
+        headers: {
+          "User-Agent": USER_AGENT,
+          Referer: BASE_URL,
+        },
+        timeout: 10000,
+      });
 
-    const $player = cheerio.load(playerResponse.data);
-    const videoSrc =
-      $player("video source").attr("src") || $player("source").attr("src");
+      const $player = cheerio.load(playerResponse.data);
+      const videoSrc =
+        $player("video source").attr("src") || $player("source").attr("src");
+
+      return videoSrc;
+    };
+
+    // First attempt: Try with original URL
+    let videoSrc = await tryExtractVideo(embedCode);
+
+    // Second attempt: If failed, try with alternative domain
+    if (!videoSrc) {
+      console.log("[DEBUG] ArabseedServer: No video found with original URL, trying alternative domain...");
+      
+      // Extract the path from the original URL
+      const urlObj = new URL(embedCode);
+      const path = urlObj.pathname; // e.g., "/embed-ekgeqrwuduki.html"
+      
+      // Construct new URL with alternative domain
+      const alternativeUrl = `https://w5.gamehub.cam${path}`;
+      console.log(`[DEBUG] ArabseedServer: Trying alternative URL: ${alternativeUrl}`);
+      
+      videoSrc = await tryExtractVideo(alternativeUrl);
+    }
 
     if (videoSrc) {
       console.log(`[DEBUG] ArabseedServer: ✓ Video URL found: ${videoSrc}`);
@@ -41,13 +64,14 @@ async function extractArabseedServer(embedCode) {
       };
     }
 
-    console.log("[DEBUG] ArabseedServer: No video source found in player page");
+    console.log("[DEBUG] ArabseedServer: No video source found after trying both domains");
     return null;
   } catch (error) {
     console.error(`[ERROR] Arabseed server extraction failed:`, error.message);
     return null;
   }
 }
+
 
 // Handle m2.arabseed.one proxy URLs
 async function extractArabseedProxy(url) {
