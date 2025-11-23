@@ -21,9 +21,30 @@ async function extractArabseedServer(embedCode) {
         timeout: 10000,
       });
 
-      const $player = cheerio.load(playerResponse.data);
-      const videoSrc =
-        $player("video source").attr("src") || $player("source").attr("src");
+      const htmlContent = playerResponse.data;
+      
+      // Method 1: Try to find video source in HTML
+      const $player = cheerio.load(htmlContent);
+      let videoSrc = $player("video source").attr("src") || $player("source").attr("src");
+      
+      // Method 2: If not found, extract from JavaScript
+      if (!videoSrc) {
+        // Look for patterns like: var originalSrc = "https://...mp4"
+        const srcMatch = htmlContent.match(/var\s+originalSrc\s*=\s*["']([^"']+)["']/);
+        if (srcMatch && srcMatch[1]) {
+          videoSrc = srcMatch[1];
+          console.log(`[DEBUG] ArabseedServer: Found video in JavaScript: ${videoSrc}`);
+        }
+        
+        // Alternative pattern: src: "https://..."
+        if (!videoSrc) {
+          const altMatch = htmlContent.match(/src:\s*["']([^"']+\.mp4[^"']*)["']/);
+          if (altMatch && altMatch[1]) {
+            videoSrc = altMatch[1];
+            console.log(`[DEBUG] ArabseedServer: Found video in src property: ${videoSrc}`);
+          }
+        }
+      }
 
       return videoSrc;
     };
@@ -35,11 +56,8 @@ async function extractArabseedServer(embedCode) {
     if (!videoSrc) {
       console.log("[DEBUG] ArabseedServer: No video found with original URL, trying alternative domain...");
       
-      // Extract the path from the original URL
       const urlObj = new URL(embedCode);
-      const path = urlObj.pathname; // e.g., "/embed-ekgeqrwuduki.html"
-      
-      // Construct new URL with alternative domain
+      const path = urlObj.pathname;
       const alternativeUrl = `https://w5.gamehub.cam${path}`;
       console.log(`[DEBUG] ArabseedServer: Trying alternative URL: ${alternativeUrl}`);
       
@@ -49,7 +67,6 @@ async function extractArabseedServer(embedCode) {
     if (videoSrc) {
       console.log(`[DEBUG] ArabseedServer: ✓ Video URL found: ${videoSrc}`);
 
-      // Use proxy URL with encoded video URL
       const proxyUrl = `https://arabseed-catalogue.vercel.app/proxy/arabseed?url=${encodeURIComponent(
         videoSrc
       )}`;
@@ -71,6 +88,7 @@ async function extractArabseedServer(embedCode) {
     return null;
   }
 }
+
 
 
 // Handle m2.arabseed.one proxy URLs
