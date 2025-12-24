@@ -17,6 +17,15 @@ module.exports = {
         { name: "search", isRequired: false },
       ],
     },
+        {
+      type: "movie",
+      id: "arabseed-english-movies",
+      name: "افلام أجنبي",
+      extra: [
+        { name: "skip", isRequired: false },
+        { name: "search", isRequired: false },
+      ],
+    },
     {
       type: "series",
       id: "arabseed-arabic-series",
@@ -30,6 +39,15 @@ module.exports = {
       type: "series",
       id: "arabseed-turkish-series",
       name: "مسلسلات تركي",
+      extra: [
+        { name: "skip", isRequired: false },
+        { name: "search", isRequired: false },
+      ],
+    },
+        {
+      type: "series",
+      id: "arabseed-english-series",
+      name: "مسلسلات اجنبي",
       extra: [
         { name: "skip", isRequired: false },
         { name: "search", isRequired: false },

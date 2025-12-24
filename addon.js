@@ -41,7 +41,7 @@ async function searchArabSeed(query, filterType) {
       const $elem = $(elem);
       const itemUrl = $elem.attr("href");
       const title = $elem.find(".post__info h3").text().trim();
-            const category = $elem.find(".post__category").text();
+      const category = $elem.find(".post__category").text();
       const posterUrl =
         $elem.find(".post__image img").attr("data-src") ||
         $elem.find(".post__image img").attr("src");
@@ -114,6 +114,11 @@ const catalogHandler = async ({ type, id, extra }) => {
   }
   if (type === "series" && id === "arabseed-turkish-series") {
     SERIES_CATEGORY = "/category/turkish-series-2/";
+    const metas = await getSeries(skip, SERIES_CATEGORY);
+    return { metas };
+  }
+  if (type === "series" && id === "arabseed-english-series") {
+    SERIES_CATEGORY = "/category/foreign-series-3/";
     const metas = await getSeries(skip, SERIES_CATEGORY);
     return { metas };
   }
