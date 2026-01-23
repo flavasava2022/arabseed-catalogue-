@@ -1,4 +1,3 @@
-// api/index.js
 const querystring = require('querystring');
 const axios = require('axios');
 const { manifest, catalogHandler, metaHandler, streamHandler } = require('../addon');
@@ -6,25 +5,21 @@ const { manifest, catalogHandler, metaHandler, streamHandler } = require('../add
 export default async function handler(req, res) {
   const url = req.url;
 
-  // Set CORS headers for web compatibility
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', '*');
   
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
-    // Manifest route
     if (url === '/' || url === '/manifest.json') {
       res.setHeader('Content-Type', 'application/json');
       return res.status(200).json(manifest);
     }
 
-    // Proxy route for ArabSeed videos
     if (url.startsWith('/proxy/arabseed')) {
       return handleArabseedProxy(req, res);
     }
 
-    // Catalog route
     const catalogMatch = url.match(/^\/catalog\/([^/]+)\/([^/]+)(?:\/(.+))?\.json$/);
     if (catalogMatch) {
       res.setHeader('Content-Type', 'application/json');
@@ -34,7 +29,6 @@ export default async function handler(req, res) {
       return res.status(200).json(result);
     }
 
-    // Stream route
     const streamMatch = url.match(/^\/stream\/([^/]+)\/(.+)\.json$/);
     if (streamMatch) {
       res.setHeader('Content-Type', 'application/json');
@@ -43,7 +37,6 @@ export default async function handler(req, res) {
       return res.status(200).json(result);
     }
 
-    // Meta route
     const metaMatch = url.match(/^\/meta\/([^/]+)\/(.+)\.json$/);
     if (metaMatch) {
       res.setHeader('Content-Type', 'application/json');
@@ -59,7 +52,6 @@ export default async function handler(req, res) {
   }
 }
 
-// Proxy handler for ArabSeed videos with referrer header
 async function handleArabseedProxy(req, res) {
   try {
     const urlParams = new URL(req.url, `https://${req.headers.host}`);
@@ -71,7 +63,6 @@ async function handleArabseedProxy(req, res) {
 
     console.log(`[PROXY] Fetching video from: ${videoUrl}`);
 
-    // Fetch video with proper referrer header
     const response = await axios({
       method: 'GET',
       url: videoUrl,
@@ -87,10 +78,8 @@ async function handleArabseedProxy(req, res) {
       maxRedirects: 5
     });
 
-    // Forward status and headers to client
     res.status(response.status);
     
-    // Forward important headers
     const headersToForward = [
       'content-type',
       'content-length',
@@ -107,11 +96,9 @@ async function handleArabseedProxy(req, res) {
       }
     });
 
-    // Allow CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Expose-Headers', '*');
 
-    // Stream the video to client
     response.data.pipe(res);
 
   } catch (error) {

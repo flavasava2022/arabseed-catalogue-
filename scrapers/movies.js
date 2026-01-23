@@ -5,8 +5,21 @@ const { extractVideoUrl } = require("../extractors");
 
 const BASE_URL = "https://a.asd.homes";
 const MOVIES_CATEGORY = "/category/arabic-movies-6/";
-const USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
+
+const HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+  'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8',
+  'Accept-Encoding': 'gzip, deflate, br',
+  'Referer': 'https://a.asd.homes/',
+  'Connection': 'keep-alive',
+  'Upgrade-Insecure-Requests': '1',
+  'Cache-Control': 'max-age=0',
+  'DNT': '1',
+  'Sec-Fetch-Dest': 'document',
+  'Sec-Fetch-Mode': 'navigate',
+  'Sec-Fetch-Site': 'same-origin'
+};
 
 // Fetch movies list
 async function getMovies(skip = 0) {
@@ -19,7 +32,7 @@ async function getMovies(skip = 0) {
     console.log(`[DEBUG] Fetching movies page: ${url}`);
 
     const response = await axios.get(url, {
-      headers: { "User-Agent": USER_AGENT },
+      headers: HEADERS,
       timeout: 15000,
     });
 
@@ -72,14 +85,13 @@ async function getMovieMeta(id) {
     console.log(`[DEBUG] Fetching movie meta from: ${movieUrl}`);
 
     const response = await axios.get(movieUrl, {
-      headers: { "User-Agent": USER_AGENT },
+      headers: HEADERS,
       timeout: 10000,
     });
 
     const $ = cheerio.load(response.data);
 
-    const title =
-      $(".post__name").text().trim();
+    const title = $(".post__name").text().trim();
     const posterUrl =
       $(".poster__single img").attr("src") ||
       $(".poster__single img").attr("data-src");
@@ -114,7 +126,7 @@ async function getMovieStreams(id) {
 
     // Step 1: Get movie page to extract CSRF token
     const response = await axios.get(movieUrl, {
-      headers: { "User-Agent": USER_AGENT },
+      headers: HEADERS,
       timeout: 10000,
     });
 
@@ -151,8 +163,10 @@ async function getMovieStreams(id) {
 
     const watchResponse = await axios.get(watchUrl, {
       headers: {
-        "User-Agent": USER_AGENT,
-        Cookie: cookies,
+        ...HEADERS,
+        'Cookie': cookies,
+        'Referer': movieUrl,
+        'Sec-Fetch-Site': 'same-origin'
       },
       timeout: 10000,
     });
@@ -221,17 +235,20 @@ async function getMovieStreams(id) {
             postData.toString(),
             {
               headers: {
-                "Content-Type":
-                  "application/x-www-form-urlencoded; charset=UTF-8",
-                "User-Agent": USER_AGENT,
-                "X-Requested-With": "XMLHttpRequest",
-                Referer: watchUrl,
-                Cookie: cookies,
-                Accept: "application/json, text/javascript, */*; q=0.01",
-                Origin: BASE_URL,
-                "Sec-Fetch-Site": "same-origin",
-                "Sec-Fetch-Mode": "cors",
-                "Sec-Fetch-Dest": "empty",
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'User-Agent': HEADERS['User-Agent'],
+                'Accept': 'application/json, text/javascript, */*; q=0.01',
+                'Accept-Language': HEADERS['Accept-Language'],
+                'Accept-Encoding': HEADERS['Accept-Encoding'],
+                'X-Requested-With': 'XMLHttpRequest',
+                'Referer': watchUrl,
+                'Cookie': cookies,
+                'Origin': BASE_URL,
+                'Connection': 'keep-alive',
+                'Sec-Fetch-Site': 'same-origin',
+                'Sec-Fetch-Mode': 'cors',
+                'Sec-Fetch-Dest': 'empty',
+                'DNT': '1'
               },
               timeout: 12000,
             }
